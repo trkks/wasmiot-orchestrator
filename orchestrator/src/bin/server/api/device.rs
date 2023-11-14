@@ -4,32 +4,26 @@ use actix_web::{get, post, web, HttpResponse};
 
 use wasmiot_orchestrator::{
     model::device::Device,
-    //orchestrator::OrchestratorApi,
+    orchestrator::OrchestratorApi,
 };
-
-use crate::AppState;
 
 
 #[get("")]
 async fn devices(
-    device_collection: web::Data<mongodb::Collection<Device>>,
+    orch: web::Data<OrchestratorApi>,
 ) -> web::Json<Vec<Device>> {
-    let mut devices = vec![];
-    let mut cursor = device_collection.find(None, None).await.unwrap();
-    while cursor.advance().await.unwrap() {
-        devices.push(cursor.deserialize_current().unwrap());
-    }
+    let devices = orch.devices();
 
     web::Json(devices)
 }
 
 #[post("")]
 async fn scan(
-    data: web::Data<AppState>,
+    orch: web::Data<OrchestratorApi>,
 ) -> HttpResponse {
     const SERVICE_TYPE: &str = "_webthing._tcp.local.";
+    orch.scan(SERVICE_TYPE);
 
-    data.orchestrator.lock().unwrap().scan(SERVICE_TYPE.to_owned());
     HttpResponse::Accepted().finish()
 }
 

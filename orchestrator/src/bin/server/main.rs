@@ -13,11 +13,7 @@ use wasmiot_orchestrator::{
 mod api;
 
 
-/// State shared between application instances.
-struct AppState {
-    orchestrator: sync::Mutex<Box<WasmiotOrchestrator>>,
-}
-
+/// Handle non-existent paths.
 async fn default_handler(req_method: http::Method) -> HttpResponse {
     match req_method {
         http::Method::GET => HttpResponse::NotFound().finish(),
@@ -25,6 +21,7 @@ async fn default_handler(req_method: http::Method) -> HttpResponse {
     }
 }
 
+/// Build up the database connection URL from environment variables.
 fn db_url_from_env() -> String {
     let host = std::env::var("MONGO_HOST").unwrap();
     let port = std::env::var("MONGO_PORT").unwrap();
@@ -37,7 +34,7 @@ fn db_url_from_env() -> String {
     )
 }
 
-/// For some time try connecting to database and exit current process if it failes.
+/// For some time try connecting to database and exit current process if it fails.
 async fn try_initialize_database() -> mongodb::Client {
     let mut tries = 0;
     let db_url = db_url_from_env();
@@ -77,16 +74,15 @@ async fn main() -> std::io::Result<()> {
 
     let database_client = try_initialize_database().await;
 
-    // Get handles to all needed collections to fine-tunedly pass them to routes.
-    let devices = database_client.database("wasmiot")
+    let device_collection = database_client.database("wasmiot")
             .collection::<model::device::Device>("device");
+    let module_collection = database_client.database("wasmiot")
+            .collection::<model::module::Module>("module");
+    let deployment_collection = database_client.database("wasmiot")
+            .collection::<model::deployment::Deployment>("deployment");
 
-
-    let app_state = web::Data::new(AppState {
-        orchestrator: sync::Mutex::new(
-            Box::new(WasmiotOrchestrator::new(devices.clone()))
-        ),
-    });
+    let orchestrator = WasmiotOrchestrator::new(device_collection, deployment_collection);
+    let orchestrator_api = orchestrator.start();
 
     HttpServer::new(move || {
         App::new()
@@ -100,15 +96,17 @@ async fn main() -> std::io::Result<()> {
                     .service(
                         web::scope("/device")
                             .configure(api::device::configure)
-                            .app_data(devices.clone())
+                            .app_data(orchestrator_api)
                     )
                     .service(
                         web::scope("/module")
                             .configure(api::module::configure)
+                            .app_data(module_collection)
                     )
                     .service(
                         web::scope("/manifest")
                             .configure(api::deployment::configure)
+                            .app_data(orchestrator_api)
                     )
             )
             .default_service(web::to(default_handler))

@@ -18,6 +18,10 @@ pub enum KeyValueStoreError {
     NotFound,
 }
 
+pub struct UpsertOk {
+    id: String,
+}
+
 /// Trait to hide a document database or other similar data storage behind a tiny "almost CRUD"
 /// interface.
 pub trait KeyValueStore<T> : Send {
@@ -31,7 +35,7 @@ impl<T: Send> KeyValueStore<T> for mongodb::Collection<T> {
         todo!()
     }
 
-    fn upsert(&self, id: Option<&str>, value: T) -> Result<(), KeyValueStoreError> {
+    fn upsert(&self, id: Option<&str>, value: T) -> Result<UpsertOk, KeyValueStoreError> {
         todo!()
     }
 

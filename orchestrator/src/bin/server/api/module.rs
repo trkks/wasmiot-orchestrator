@@ -1,57 +1,90 @@
 //! Contains module-specific routes' handlers and associated data types.
+//!
+//! Different from the other API routes (i.e. device and deployment), modules are decoupled from
+//! orchestrator which instead of managing, only uses them in deployments.
 
 use actix_web::{
     get,
     post,
     web,
-    http,
-    Responder,
 };
 
 use wasmiot_orchestrator::{
-    //orchestrator::OrchestratorApi,
-    model::module::{Layer, Module},
+    model::module::Module,
+    orchestrator::KeyValueStore,
 };
 
-use crate::AppState;
-
-
-/// Information needed for creating and activating a deployment.
-#[derive(serde::Deserialize)]
-struct ModuleInfo {
-    name: String,
-}
 
 /// Information in response to operations performed regarding a module.
 #[derive(serde::Serialize)]
 enum ModuleOperationInfo {
     /// Unspecified placeholder error.
-    Other,
     Creation { name: String },
-    LayerAddition,
+    Description,
+}
+
+/// Newtype containing part of Module information parsed from creation request.
+struct ModuleCreation(Module);
+
+#[derive(Debug)]
+enum ModuleCreationError {
+    UnsupportedWasm,
+}
+
+impl TryFrom<actix_multipart::Multipart> for ModuleCreation {
+    type Error = ModuleCreationError;
+    fn try_from(value: actix_multipart::Multipart) -> Result<Self, Self::Error> {
+        todo!()
+    }
+}
+
+/// Newtype containing part of Module information parsed from description request.
+struct ModuleDescription(Module);
+
+#[derive(Debug)]
+enum ModuleDescriptionError {
+    MissingFile { path: String },
+}
+
+impl TryFrom<actix_multipart::Multipart> for ModuleDescription {
+    type Error = ModuleCreationError;
+    fn try_from(value: actix_multipart::Multipart) -> Result<Self, Self::Error> {
+        todo!()
+    }
 }
 
 #[get("")]
-async fn modules(state: web::Data<AppState>) -> web::Json<Vec<Module>> {
-    let orchestrator = state.orchestrator.lock().unwrap();
-    web::Json(orchestrator.modules().into_iter().cloned().collect())
+async fn modules(module_collection: web::Data<mongodb::Collection<Module>>) -> web::Json<Vec<Module>> {
+    let modules = module_collection.read(None).unwrap();
+
+    web::Json(modules)
 }
 
 #[post("")]
 async fn module_creation(
-    state: web::Data<AppState>,
-    module_info: web::Json<ModuleInfo>,
+    module_collection: web::Data<mongodb::Collection<Module>>,
+    mut payload: actix_multipart::Multipart
 ) -> web::Json<Result<ModuleOperationInfo, String>> {
-    todo!()
+    let ModuleCreation(module_part) = payload.try_into().unwrap();
+    let insert_result = module_collection.upsert(None, module_part).unwrap();
+
+    let insert_response = ModuleOperationInfo::Creation { name: insert_result.id };
+
+    web::Json(insert_response) 
 }
 
 #[post("/{name}")]
-async fn module_file_upload(
-    state: web::Data<AppState>,
+async fn module_description(
+    module_collection: web::Data<mongodb::Collection<Module>>,
     name: web::Path<String>,
     mut payload: actix_multipart::Multipart
 ) -> web::Json<ModuleOperationInfo> {
-    todo!()
+    let ModuleDescription(module_part) = payload.try_into().unwrap();
+    let upsert_result = module_collection.upsert(Some(name), module_part).unwrap();
+
+    let upsert_response = ModuleOperationInfo::Description;
+    
+    web::Json(upsert_response)
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {

@@ -1,10 +1,11 @@
 //! Contains deployment-specific routes' handlers and associated data types.
 
-use actix_web::{get, post, web};
+use actix_web::{get, post, web, HttpResponse};
 
-use wasmiot_orchestrator::model::deployment::Deployment;
-
-use crate::AppState;
+use wasmiot_orchestrator::{
+    model::deployment::Deployment,
+    orchestrator::OrchestratorApi,
+};
 
 
 /// Information needed for creating a single node of a manifest.
@@ -26,16 +27,25 @@ struct DeploymentCreationInfo {
 }
 
 #[get("")]
-async fn deployments(state: web::Data<AppState>) -> web::Json<Vec<Deployment>> {
-    todo!()
+async fn deployments(orch: web::Data<OrchestratorApi>) -> web::Json<Vec<Deployment>> {
+    let deployments = orch.deployments();
+
+    web::Json(deployments)
 }
 
-#[post("")]
+#[post("/{deployment_id}")]
 async fn deployment_creation(
-    state: web::Data<AppState>,
-    deployment_info: web::Json<DeploymentCreationInfo>,
-) -> String {
-    todo!()
+    orch: web::Data<OrchestratorApi>,
+    deployment_id: web::Path<Option<String>>,
+    manifest: web::Json<DeploymentCreationInfo>,
+) -> web::Either<String, HttpResponse> {
+    if let Some(id) = deployment_id.into_inner() {
+        orch.update_deployment(id, manifest);
+        return web::Either::Right(HttpResponse::Accepted().finish());
+    } else {
+        let id = orch.create_deployment(manifest);
+        return web::Either::Left(id);
+    }
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
