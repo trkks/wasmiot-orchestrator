@@ -2,11 +2,13 @@
 
 use std::sync;
 
-use actix_web::{http, middleware, web, App, HttpServer, HttpResponse};
+use actix_web::{
+    get, http, middleware, web, App, HttpServer, HttpResponse
+};
 
 use wasmiot_orchestrator::{
     model,
-    orchestrator::WasmiotOrchestrator,
+    orchestrator::{WasmiotOrchestrator, OrchestratorApi},
 };
 
 
@@ -16,8 +18,11 @@ mod api;
 /// Handle non-existent paths.
 async fn default_handler(req_method: http::Method) -> HttpResponse {
     match req_method {
-        http::Method::GET => HttpResponse::NotFound().finish(),
-        _                 => HttpResponse::MethodNotAllowed().finish(),
+        http::Method::GET => {
+            HttpResponse::Accepted().finish()
+        },
+
+        _ => HttpResponse::MethodNotAllowed().finish(),
     }
 }
 
@@ -35,7 +40,7 @@ fn db_url_from_env() -> String {
 }
 
 /// For some time try connecting to database and exit current process if it fails.
-fn try_initialize_database() -> mongodb::sync::Client {
+async fn try_initialize_database() -> mongodb::Client {
     let mut tries = 0;
     let db_url = db_url_from_env();
 
@@ -47,12 +52,12 @@ fn try_initialize_database() -> mongodb::sync::Client {
             std::process::exit(1);
         }
 
-        if let Ok(database_client) = mongodb::sync::Client::with_uri_str(
+        if let Ok(database_client) = mongodb::Client::with_uri_str(
                 &db_url
-            )
+            ).await
         {
             // Test that the client works.
-            if let Ok(db_names) = database_client.list_database_names(None, None) {
+            if let Ok(db_names) = database_client.list_database_names(None, None).await {
                 for db_name in db_names {
                     println!("{}", db_name);
                 }
@@ -65,13 +70,14 @@ fn try_initialize_database() -> mongodb::sync::Client {
     }
 }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+#[tokio::main]
+async fn main() -> Result<(), std::io::Error> {
+
     env_logger::init_from_env(
         env_logger::Env::new().default_filter_or("info")
     );
 
-    let database_client = try_initialize_database();
+    let database_client = try_initialize_database().await;
 
     let device_collection = database_client.database("wasmiot")
             .collection::<model::device::Device>("device");
@@ -80,31 +86,34 @@ async fn main() -> std::io::Result<()> {
     let deployment_collection = database_client.database("wasmiot")
             .collection::<model::deployment::Deployment>("deployment");
 
-    let orchestrator_api = WasmiotOrchestrator::start(device_collection, deployment_collection);
+    let (orchestrator_daemon, orchestrator_api) =
+            WasmiotOrchestrator::start(
+                device_collection, deployment_collection
+            ).await;
+
+    let handler_orch_api = web::Data::new(orchestrator_api.clone());
 
     HttpServer::new(move || {
         App::new()
             // Enable access-logging.
             .wrap(middleware::Logger::default())
-            // Give all scopes access to common objects.
-            .app_data(app_state.clone())
             // Map orchestrator API to HTTP endpoints.
             .service(
                 web::scope("/api")
                     .service(
                         web::scope("/device")
                             .configure(api::device::configure)
-                            .app_data(orchestrator_api)
+                            .app_data(handler_orch_api.clone())
                     )
                     .service(
                         web::scope("/module")
                             .configure(api::module::configure)
-                            .app_data(module_collection)
+                            .app_data(web::Data::new(module_collection.clone()))
                     )
                     .service(
                         web::scope("/manifest")
                             .configure(api::deployment::configure)
-                            .app_data(orchestrator_api)
+                            .app_data(handler_orch_api.clone())
                     )
             )
             .default_service(web::to(default_handler))
@@ -113,5 +122,11 @@ async fn main() -> std::io::Result<()> {
     .workers(1)
     .bind(("0.0.0.0", 8000))?
     .run()
-    .await
+    .await?;
+
+    // Signal and wait for daemon to return.
+    orchestrator_api.shutdown();
+    orchestrator_daemon.await?;
+
+    Ok(())
 }

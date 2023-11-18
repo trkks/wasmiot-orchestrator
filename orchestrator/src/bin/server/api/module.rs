@@ -26,7 +26,7 @@ enum ModuleOperationInfo {
 }
 
 /// Newtype containing part of Module information parsed from creation request.
-struct ModuleCreation(Module);
+struct ModuleCreation(u32);
 
 #[derive(Debug)]
 enum ModuleCreationError {
@@ -68,30 +68,12 @@ async fn module_creation(
     module_collection: web::Data<Collection<Module>>,
     payload: actix_multipart::Multipart
 ) -> web::Json<ModuleOperationInfo> {
-    let ModuleCreation(module_part) = payload.try_into().unwrap();
-    let insert_result = module_collection.insert_one(module_part, None).unwrap();
+    let ModuleCreation(n) = payload.try_into().unwrap();
+    let insert_result = module_collection.insert_one(Module { name: format!("foo{}", n), layers: vec![] }, None).unwrap();
 
     let insert_response = ModuleOperationInfo::Creation { name: insert_result.inserted_id.to_string() };
 
     web::Json(insert_response)
-}
-
-#[post("/{name}")]
-async fn module_description(
-    module_collection: web::Data<Collection<Module>>,
-    name: web::Path<String>,
-    mut payload: actix_multipart::Multipart
-) -> web::Json<ModuleOperationInfo> {
-    let ModuleDescription(module_part) = payload.try_into().unwrap();
-    let upsert_result = module_collection.update_one(
-        doc! {},
-        Some(name.into_inner()),
-        module_part,
-    ).unwrap();
-
-    let upsert_response = ModuleOperationInfo::Description;
-    
-    web::Json(upsert_response)
 }
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
@@ -100,6 +82,5 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             web::scope("/")
                 .service(modules)
                 .service(module_creation)
-                .service(module_file_upload)
         );
 }

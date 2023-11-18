@@ -1,10 +1,9 @@
-//! Description of orchestrator interface in the form of (TODO) the `OrchestratorApi` trait and a
-//! basic implementation of it `WasmiotOrchestrator`.
+//! Description of orchestrator daemon and an interface for messaging with it.
 
 use std::sync::mpsc;
-use std::thread;
 
-use mongodb::sync::Collection;
+use mongodb::Collection;
+use tokio::task;
 
 use crate::model::{
     DeploymentName,
@@ -28,18 +27,45 @@ pub struct UpsertOk {
 
 #[derive(Debug)]
 pub enum Event {
+    Scan(String),
     Manifest(dep::Manifest),
+    Shutdown,
 }
 
 /// An interface or ("facade" if you're pretentious) for a user to interact with the orchestrator
 /// daemon.
+#[derive(Clone)]
 pub struct OrchestratorApi {
     event_tx: mpsc::Sender<Event>,
 }
 
 impl OrchestratorApi {
-    pub fn push_event(&self, event: Event) -> Result<(), mpsc::SendError<Event>> {
-        self.event_tx.send(event)
+    pub fn devices(&self) -> Vec<device::Device> {
+        todo!()
+    }
+
+    pub fn scan(&self, service_type: &str) {
+        let _ = self.event_tx.send(
+            Event::Scan(service_type.to_owned())
+        );
+    }
+
+    pub fn deployments(&self) -> Vec<dep::Deployment> {
+        todo!()
+    }
+
+    pub fn create_deployment(&self, manifest: dep::Manifest) -> String {
+        todo!()
+    }
+
+    pub fn update_deployment(&self, id: &str, manifest: dep::Manifest) {
+        todo!()
+    }
+
+    pub fn shutdown(self) {
+         let _ = self.event_tx.send(
+            Event::Shutdown
+        );
     }
 }
 
@@ -50,22 +76,23 @@ impl OrchestratorApi {
 /// loop different events are polled, resources (computing and data) are checked and deployments
 /// are reconfigured. Interacting with the loop happens directly through channels (events) or
 /// indirectly with the database (resources).
-pub struct WasmiotOrchestrator {
-    device_scanner_handle: Option<thread::JoinHandle<()>>,
-    devices: Collection<device::Device>,
-}
+pub struct WasmiotOrchestrator;
 
 impl WasmiotOrchestrator {
-    pub fn start(
+    pub async fn start(
         devices: Collection<device::Device>,
         deployments: Collection<dep::Deployment>,
-    ) -> (thread::JoinHandle<Self>, OrchestratorApi) {
+    ) -> (task::JoinHandle<()>, OrchestratorApi) {
         let (event_tx, event_rx) = mpsc::channel();
-        let daemon_handle = thread::spawn(
-            move || loop {
-                Self::orchestrator_loop(
-                    &event_rx, &devices, &deployments,
-                )
+        let daemon_handle = tokio::spawn(
+            async move {
+                loop {
+                    if !Self::orchestrator_loop(
+                        &event_rx, &devices, &deployments,
+                    ) {
+                        break;
+                    }
+                }
             }
         );
         let api = OrchestratorApi { event_tx };
@@ -77,12 +104,19 @@ impl WasmiotOrchestrator {
         event_queue: &mpsc::Receiver<Event>,
         devices: &Collection<device::Device>,
         deployments: &Collection<dep::Deployment>,
-    ) {
-        if let Ok(event) = event_queue.try_recv() {
-            println!("Got event: {:?}", event);
-        } else {
-            println!("Nothing queued...");
+    ) -> bool {
+        match event_queue.recv() {
+            Err(_) => return false,
+            Ok(other_event) => match other_event {
+                Event::Scan(st) => log::debug!("Scanning '{}'...", st),
+                Event::Manifest(m) => log::debug!("Manifesting {} nodes", m.len()),
+                Event::Shutdown => {
+                    log::debug!("Shutting down...");
+                    return false;
+                },
+            }
         }
+        true
     }
 
     fn solve(
@@ -100,10 +134,10 @@ impl WasmiotOrchestrator {
         todo!()
     }
 
-    fn device_scan(
+    async fn device_scan(
         service_type: &str,
         devices: Collection<device::Device>,
-    ) {
+    ) -> Result<mongodb::results::InsertManyResult, mongodb::error::Error> {
         let mdns = mdns_sd::ServiceDaemon::new()
             .expect("failed creating mDNS daemon");
 
@@ -125,14 +159,11 @@ impl WasmiotOrchestrator {
 
         mdns.shutdown().expect("failed at mDNS daemon shutdown");
         
-        devices.insert_many(found_devices, None).unwrap();
+        devices.insert_many(found_devices, None).await
     }
 }
 
-//impl OrchestratorApi for WasmiotOrchestrator {
 impl WasmiotOrchestrator {
-    //type Supervisor = HttpSupervisor;
-
     /// Returns a list of modules currently available.
     pub fn modules(&self) -> Vec<&module::Module> {
         todo!()
