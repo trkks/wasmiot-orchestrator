@@ -35,7 +35,7 @@ fn db_url_from_env() -> String {
 }
 
 /// For some time try connecting to database and exit current process if it fails.
-async fn try_initialize_database() -> mongodb::Client {
+fn try_initialize_database() -> mongodb::sync::Client {
     let mut tries = 0;
     let db_url = db_url_from_env();
 
@@ -47,13 +47,12 @@ async fn try_initialize_database() -> mongodb::Client {
             std::process::exit(1);
         }
 
-        if let Ok(database_client) = mongodb::Client::with_uri_str(
+        if let Ok(database_client) = mongodb::sync::Client::with_uri_str(
                 &db_url
             )
-            .await
         {
             // Test that the client works.
-            if let Ok(db_names) = database_client.list_database_names(None, None).await {
+            if let Ok(db_names) = database_client.list_database_names(None, None) {
                 for db_name in db_names {
                     println!("{}", db_name);
                 }
@@ -72,7 +71,7 @@ async fn main() -> std::io::Result<()> {
         env_logger::Env::new().default_filter_or("info")
     );
 
-    let database_client = try_initialize_database().await;
+    let database_client = try_initialize_database();
 
     let device_collection = database_client.database("wasmiot")
             .collection::<model::device::Device>("device");
@@ -81,8 +80,7 @@ async fn main() -> std::io::Result<()> {
     let deployment_collection = database_client.database("wasmiot")
             .collection::<model::deployment::Deployment>("deployment");
 
-    let orchestrator = WasmiotOrchestrator::new(device_collection, deployment_collection);
-    let orchestrator_api = orchestrator.start();
+    let orchestrator_api = WasmiotOrchestrator::start(device_collection, deployment_collection);
 
     HttpServer::new(move || {
         App::new()

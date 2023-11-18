@@ -16,7 +16,7 @@ use super::{
 /// - `name` acts as an identifier for the module.
 /// - `layers` contains the data and logic each dependent on previous ones (e.g., the last layer is
 /// never a dependency for any other layer).
-#[derive(serde::Serialize, Clone)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct Module {
     pub name: ModuleName,
     pub layers: Vec<Layer>,
@@ -26,7 +26,7 @@ pub struct Module {
 ///
 /// - `File` is for data, that is accessible through the filesystem.
 /// - `WebAssembly` is for logic, that can depend on other layers.
-#[derive(serde::Serialize, Clone)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub enum Layer {
     File(path::PathBuf),
     WebAssembly {

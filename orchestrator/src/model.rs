@@ -13,7 +13,7 @@ pub type DeviceName = String;
 pub type DeploymentName = String;
 
 /// Represents different types that can be used when interacting with WebAssembly.
-#[derive(serde::Serialize, Clone)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub enum WebAssemblyType {
     U32(u32),
     U64(u64),
@@ -24,7 +24,7 @@ pub enum WebAssemblyType {
 type WebAssemblyFunctionName = String;
 
 /// Describes a WebAssembly function and how it's called.
-#[derive(serde::Serialize, Clone)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct WebAssemblyFunction {
     input: Vec<WebAssemblyType>,
     output: Vec<WebAssemblyType>,

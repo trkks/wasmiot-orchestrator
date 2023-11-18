@@ -11,7 +11,7 @@ use super::{
 };
 
 /// Describes a single node in the graph of connections between functions on devices.
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 pub struct ManifestNode {
     device: Option<DeviceName>,
     module: Module,

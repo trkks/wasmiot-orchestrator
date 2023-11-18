@@ -1,7 +1,10 @@
 //! Description of orchestrator interface in the form of (TODO) the `OrchestratorApi` trait and a
 //! basic implementation of it `WasmiotOrchestrator`.
 
+use std::sync::mpsc;
 use std::thread;
+
+use mongodb::sync::Collection;
 
 use crate::model::{
     DeploymentName,
@@ -13,6 +16,7 @@ use crate::model::{
 use crate::supervisor::http_supervisor::HttpSupervisor;
 
 
+
 #[derive(Debug)]
 pub enum KeyValueStoreError {
     NotFound,
@@ -22,27 +26,23 @@ pub struct UpsertOk {
     id: String,
 }
 
-/// Trait to hide a document database or other similar data storage behind a tiny "almost CRUD"
-/// interface.
-pub trait KeyValueStore<T> : Send {
-    fn read(&self, id: Option<&str>) -> Result<Vec<T>, KeyValueStoreError>;
-    fn upsert(&self, id: Option<&str>, value: T) -> Result<(), KeyValueStoreError>;
-    fn delete(&self, id: Option<&str>) -> Result<(), KeyValueStoreError>;
+#[derive(Debug)]
+pub enum Event {
+    Manifest(dep::Manifest),
 }
 
-impl<T: Send> KeyValueStore<T> for mongodb::Collection<T> {
-    fn read(&self, id: Option<&str>) -> Result<Vec<T>, KeyValueStoreError> {
-        todo!()
-    }
+/// An interface or ("facade" if you're pretentious) for a user to interact with the orchestrator
+/// daemon.
+pub struct OrchestratorApi {
+    event_tx: mpsc::Sender<Event>,
+}
 
-    fn upsert(&self, id: Option<&str>, value: T) -> Result<UpsertOk, KeyValueStoreError> {
-        todo!()
-    }
-
-    fn delete(&self, id: Option<&str>) -> Result<(), KeyValueStoreError> {
-        todo!()
+impl OrchestratorApi {
+    pub fn push_event(&self, event: Event) -> Result<(), mpsc::SendError<Event>> {
+        self.event_tx.send(event)
     }
 }
+
 
 /// Implementation of Wasm-IoT orchestrator's inner workings.
 ///
@@ -52,14 +52,36 @@ impl<T: Send> KeyValueStore<T> for mongodb::Collection<T> {
 /// indirectly with the database (resources).
 pub struct WasmiotOrchestrator {
     device_scanner_handle: Option<thread::JoinHandle<()>>,
-    devices: Box<dyn KeyValueStore<device::Device>>,
+    devices: Collection<device::Device>,
 }
 
 impl WasmiotOrchestrator {
-    pub fn new(devices: mongodb::Collection<device::Device>) -> Self {
-        Self {
-            device_scanner_handle: None,
-            devices: Box::new(devices),
+    pub fn start(
+        devices: Collection<device::Device>,
+        deployments: Collection<dep::Deployment>,
+    ) -> (thread::JoinHandle<Self>, OrchestratorApi) {
+        let (event_tx, event_rx) = mpsc::channel();
+        let daemon_handle = thread::spawn(
+            move || loop {
+                Self::orchestrator_loop(
+                    &event_rx, &devices, &deployments,
+                )
+            }
+        );
+        let api = OrchestratorApi { event_tx };
+
+        (daemon_handle, api)
+    }
+
+    fn orchestrator_loop(
+        event_queue: &mpsc::Receiver<Event>,
+        devices: &Collection<device::Device>,
+        deployments: &Collection<dep::Deployment>,
+    ) {
+        if let Ok(event) = event_queue.try_recv() {
+            println!("Got event: {:?}", event);
+        } else {
+            println!("Nothing queued...");
         }
     }
 
@@ -78,19 +100,22 @@ impl WasmiotOrchestrator {
         todo!()
     }
 
-    fn device_scan<Kvs:KeyValueStore<device::Device>>(service_type: &str, device_collection: Kvs) {
+    fn device_scan(
+        service_type: &str,
+        devices: Collection<device::Device>,
+    ) {
         let mdns = mdns_sd::ServiceDaemon::new()
             .expect("failed creating mDNS daemon");
 
         let receiver = mdns.browse(service_type)
             .expect("failed browsing of mDNS services");
 
-        let mut devices = vec![];
+        let mut found_devices = vec![];
         while let Ok(event) = receiver.recv() {
             match event {
                 mdns_sd::ServiceEvent::ServiceResolved(info) => {
                     println!("Service resolved: {:?}", info);
-                    devices.push(<mdns_sd::ServiceInfo as Into<device::Device>>::into(info));
+                    found_devices.push(<mdns_sd::ServiceInfo as Into<device::Device>>::into(info));
                 },
                 other => {
                     println!("Received some other event: {:?}", &other);
@@ -100,9 +125,7 @@ impl WasmiotOrchestrator {
 
         mdns.shutdown().expect("failed at mDNS daemon shutdown");
         
-        for device in devices {
-            device_collection.upsert(None, device).unwrap();
-        }
+        devices.insert_many(found_devices, None).unwrap();
     }
 }
 

@@ -9,10 +9,12 @@ use actix_web::{
     web,
 };
 
-use wasmiot_orchestrator::{
-    model::module::Module,
-    orchestrator::KeyValueStore,
+use mongodb::{
+    bson::doc,
+    sync::Collection,
 };
+
+use wasmiot_orchestrator::model::module::Module;
 
 
 /// Information in response to operations performed regarding a module.
@@ -54,33 +56,38 @@ impl TryFrom<actix_multipart::Multipart> for ModuleDescription {
 }
 
 #[get("")]
-async fn modules(module_collection: web::Data<mongodb::Collection<Module>>) -> web::Json<Vec<Module>> {
-    let modules = module_collection.read(None).unwrap();
+async fn modules(module_collection: web::Data<Collection<Module>>) -> web::Json<Vec<Module>> {
+    let modules = module_collection.find(None, None);
 
-    web::Json(modules)
+    web::Json(modules);
+    todo!()
 }
 
 #[post("")]
 async fn module_creation(
-    module_collection: web::Data<mongodb::Collection<Module>>,
-    mut payload: actix_multipart::Multipart
-) -> web::Json<Result<ModuleOperationInfo, String>> {
+    module_collection: web::Data<Collection<Module>>,
+    payload: actix_multipart::Multipart
+) -> web::Json<ModuleOperationInfo> {
     let ModuleCreation(module_part) = payload.try_into().unwrap();
-    let insert_result = module_collection.upsert(None, module_part).unwrap();
+    let insert_result = module_collection.insert_one(module_part, None).unwrap();
 
-    let insert_response = ModuleOperationInfo::Creation { name: insert_result.id };
+    let insert_response = ModuleOperationInfo::Creation { name: insert_result.inserted_id.to_string() };
 
-    web::Json(insert_response) 
+    web::Json(insert_response)
 }
 
 #[post("/{name}")]
 async fn module_description(
-    module_collection: web::Data<mongodb::Collection<Module>>,
+    module_collection: web::Data<Collection<Module>>,
     name: web::Path<String>,
     mut payload: actix_multipart::Multipart
 ) -> web::Json<ModuleOperationInfo> {
     let ModuleDescription(module_part) = payload.try_into().unwrap();
-    let upsert_result = module_collection.upsert(Some(name), module_part).unwrap();
+    let upsert_result = module_collection.update_one(
+        doc! {},
+        Some(name.into_inner()),
+        module_part,
+    ).unwrap();
 
     let upsert_response = ModuleOperationInfo::Description;
     
