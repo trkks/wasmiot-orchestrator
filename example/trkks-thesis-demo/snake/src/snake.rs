@@ -33,7 +33,12 @@ impl SnakeGame {
         self.input = x;
     }
 
-    pub fn next_frame(&mut self) -> Result<(), &'static str> {
+    /// Forward the game state and return the type of game object that the
+    /// player head is on top of. This signals to caller if for example an apple was picked up and
+    /// thus a sound-effect should play and score be incremented.
+    pub fn next_frame(&mut self) -> Result<GameObject, &'static str> {
+        let mut collided_go = GameObject::Floor;
+
         let input = &self.input;
 
         match input {
@@ -82,6 +87,7 @@ impl SnakeGame {
         }
 
         if self.snake[0].x == self.apple.x && self.snake[0].y == self.apple.y {
+            collided_go = GameObject::Apple;
             self.snake.push(self.snake[self.snake.len()-1]);
             self.apple.x = (rand::random::<f32>() * self.board_size.x as f32) as i32;
             self.apple.y = (rand::random::<f32>() * self.board_size.y as f32) as i32;
@@ -102,7 +108,7 @@ impl SnakeGame {
             return Err("Game over");
         }
 
-        Ok(())
+        Ok(collided_go)
     }
 
     pub fn board(&self) -> &Board {

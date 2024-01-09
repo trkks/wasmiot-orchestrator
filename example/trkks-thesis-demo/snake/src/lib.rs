@@ -72,9 +72,9 @@ pub mod snake_adapter {
 
         let lines = unsafe { GAME.as_mut().unwrap().board().chunks(W) };
 
-        // Write the game-matrix into a file as JSON.
+        // Write the game-matrix flat into a file where each byte matches a cell.
         let bytes: Vec<u8> = {
-            lines
+            let mut xs = lines
                 .fold(
                     Vec::with_capacity(W * H),
                     |mut acc, line| {
@@ -84,10 +84,20 @@ pub mod snake_adapter {
                                 .collect::<Vec<u8>>()
                         );
                         acc
-                })
+                });
+
+            // Add information to the __serialized state__ about the apple changing: 0 at the last
+            // index means the apple has not been picked up and any other value means it has.
+            if let Ok(snake::GameObject::Apple) = game_status {
+                xs.push(1);
+            } else {
+                xs.push(0);
+            }
+            xs
         };
 
-        assert_eq!(bytes.len(), W * H);
+        assert_eq!(bytes.len(), W * H + 1);
+        
 
         if 0 < unsafe { save_serialized_barbar(bytes.as_ptr()) }{
             return 3;

@@ -3,11 +3,13 @@ const CELLBOUNDS = [20, 10];
 const CELLSIZE = [64, 64];
 const BOUNDS = [CELLBOUNDS[0] * CELLSIZE[0], CELLBOUNDS[1] * CELLSIZE[1]];
 // Constants for game timing.
-const WAIT_READY = 3000;
-const GAME_TICK = 250;
+const WAIT_READY = 0;//3000;
+const GAME_TICK = 150;
 
 // Path where the .wasm containing game logic can be loaded from.
 const GAME_WASM_PATH = "/snake/target/wasm32-unknown-unknown/release/snake.wasm";
+// Queue of colors that the apple in the game will cycle between.
+const APPLE_COLORS = ["#339933","#BB3333","#33DD33","#FF3333"];
 
 // The game running
 let wasmInstanceMemory = null;
@@ -35,8 +37,10 @@ async function init(canvas) {
             saveSerializedState: function(ptr) {
                 // TODO: Change hardcode to wasm.exports.new(w, h);
                 const { W, H } = { W: 20, H: 10 };
-                const mem = new Uint8Array(wasmInstanceMemory.buffer, ptr, W * H);
-                const state = mem.slice(0, W * H);
+                const mem = new Uint8Array(
+                    wasmInstanceMemory.buffer, ptr, W * H + 1
+                );
+                const state = mem.slice(0, W * H + 1);
                 // Show the state onscreen. 
                 fillGrid(ctx, -1);
                 for (let y = 0; y < H; y++) {
@@ -44,6 +48,11 @@ async function init(canvas) {
                         const thing = state[y * W + x];
                         drawAtGrid(ctx, x, y, thing);
                     }
+                }
+                // Cycle the apple color when a new one is spawned.
+                if (state.at(-1) !== 0) {
+                    const temp = APPLE_COLORS.shift();
+                    APPLE_COLORS.push(temp);
                 }
             }
         },
@@ -67,7 +76,7 @@ async function init(canvas) {
 function setFillStyleOnTing(ctx, thing) {
     switch (thing) {
         case 0:
-            ctx.fillStyle = "green";
+            ctx.fillStyle = APPLE_COLORS[0];
             break;
         case 1:
             ctx.fillStyle = "blue";
@@ -165,7 +174,7 @@ function restartGame(ctx, wasm, dowait=true) {
     wasm.exports.new();
 
     // Wait for some time before starting the game loop so that player
-    // can prepare
+    // can prepare.
     const startLoop = function() {
         // Start game loop.
         gameLoopInterval = setInterval(
