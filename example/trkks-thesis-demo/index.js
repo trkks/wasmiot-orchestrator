@@ -8,8 +8,8 @@ const GAME_TICK = 150;
 
 // Path where the .wasm containing game logic can be loaded from.
 const GAME_WASM_PATH = "/snake/target/wasm32-unknown-unknown/release/snake.wasm";
-// Queue of colors that the apple in the game will cycle between.
-const APPLE_COLORS = ["#339933","#BB3333","#33DD33","#FF3333"];
+// Queue of image paths that the apple in the game will cycle between.
+const APPLE_IMG_PATHS = ["/husky.jpeg","/golden-retriever.jpeg"];
 
 // The game running
 let wasmInstanceMemory = null;
@@ -23,6 +23,13 @@ function initCanvas(canvas) {
     return ctx;
 }
 
+async function refreshApplePattern(ctx) {
+    const img = await fetch(APPLE_IMG_PATHS[0]);
+    const blob = await img.blob();
+    const imageBitmap = await createImageBitmap(blob);
+    applePattern = ctx.createPattern(imageBitmap, "repeat");
+}
+
 async function init(canvas) {
     const ctx = initCanvas(canvas);
 
@@ -30,11 +37,16 @@ async function init(canvas) {
     ctx.fillStyle = "green";
     ctx.fillRect(10, 10, 150, 100);
 
+    // Set initial apple pattern.
+    await refreshApplePattern(ctx);
+
     // Load and start the WebAssembly app importing functionality
     // of the canvas.
     const importObject = {
-        javascript:{
-            saveSerializedState: function(ptr) {
+        javascript: {
+            // NOTE: Passing async function to WebAssembly which makes no
+            // distinction between async and sync callbacks.
+            saveSerializedState: async function(ptr) {
                 // TODO: Change hardcode to wasm.exports.new(w, h);
                 const { W, H } = { W: 20, H: 10 };
                 const mem = new Uint8Array(
@@ -49,10 +61,11 @@ async function init(canvas) {
                         drawAtGrid(ctx, x, y, thing);
                     }
                 }
-                // Cycle the apple color when a new one is spawned.
+                // Set a new image as the apple pattern.
                 if (state.at(-1) !== 0) {
-                    const temp = APPLE_COLORS.shift();
-                    APPLE_COLORS.push(temp);
+                    const temp = APPLE_IMG_PATHS.shift();
+                    APPLE_IMG_PATHS.push(temp);
+                    await refreshApplePattern(ctx);
                 }
             }
         },
@@ -76,7 +89,7 @@ async function init(canvas) {
 function setFillStyleOnTing(ctx, thing) {
     switch (thing) {
         case 0:
-            ctx.fillStyle = APPLE_COLORS[0];
+            ctx.fillStyle = applePattern;
             break;
         case 1:
             ctx.fillStyle = "blue";
