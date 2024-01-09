@@ -1,3 +1,3 @@
 [submodule "wasmiot-supervisor"]
 	path = wasmiot-supervisor
-	url = git@github.com:LiquidAI-project/wasmiot-supervisor.git
+	url = git@github.com:trkks/wasmiot-supervisor.git
