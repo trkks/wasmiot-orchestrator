@@ -8,6 +8,7 @@ const GAME_TICK = 150;
 
 // Path where the .wasm containing game logic can be loaded from.
 const GAME_WASM_PATH = "/snake/target/wasm32-unknown-unknown/release/snake.wasm";
+
 // Queue of image paths that the apple in the game will cycle between.
 const APPLE_IMG_PATHS = ["/husky.jpeg","/golden-retriever.jpeg"];
 
@@ -23,11 +24,29 @@ function initCanvas(canvas) {
     return ctx;
 }
 
-async function refreshApplePattern(ctx) {
+/*
+ * Return a pattern for the game's apple object scaled as requested.
+ */
+async function getApplePattern(ctx, scaleWidth, scaleHeight) {
+    // Cycle the patterns
+    const temp = APPLE_IMG_PATHS.shift();
+    APPLE_IMG_PATHS.push(temp);
+
     const img = await fetch(APPLE_IMG_PATHS[0]);
     const blob = await img.blob();
     const imageBitmap = await createImageBitmap(blob);
-    applePattern = ctx.createPattern(imageBitmap, "repeat");
+    // Scale the image.
+    const scalingCanvas = document.createElement("canvas");
+    // Set the canvas to be the same size as the eventual image in order to
+    // have more straightforward operations below.
+    scalingCanvas.width = scaleWidth;
+    scalingCanvas.height = scaleHeight;
+    const scalingCtx = scalingCanvas.getContext("2d");
+    scalingCtx.drawImage(imageBitmap, 0, 0, scaleWidth, scaleHeight);
+    // Create a pattern from the scaled image on the canvas.
+    const pattern = ctx.createPattern(scalingCanvas, "repeat");
+
+    return pattern;
 }
 
 async function init(canvas) {
@@ -38,7 +57,7 @@ async function init(canvas) {
     ctx.fillRect(10, 10, 150, 100);
 
     // Set initial apple pattern.
-    await refreshApplePattern(ctx);
+    applePattern = await getApplePattern(ctx, ...CELLSIZE);
 
     // Load and start the WebAssembly app importing functionality
     // of the canvas.
@@ -61,11 +80,10 @@ async function init(canvas) {
                         drawAtGrid(ctx, x, y, thing);
                     }
                 }
-                // Set a new image as the apple pattern.
+                // Set a new image as the apple pattern if the apple-spawn-flag
+                // is set.
                 if (state.at(-1) !== 0) {
-                    const temp = APPLE_IMG_PATHS.shift();
-                    APPLE_IMG_PATHS.push(temp);
-                    await refreshApplePattern(ctx);
+                    applePattern = await getApplePattern(ctx, ...CELLSIZE);
                 }
             }
         },
