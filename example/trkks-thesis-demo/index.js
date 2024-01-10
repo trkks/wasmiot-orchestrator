@@ -9,8 +9,8 @@ const GAME_TICK = 150;
 // Path where the .wasm containing game logic can be loaded from.
 const GAME_WASM_PATH = "/snake/target/wasm32-unknown-unknown/release/snake.wasm";
 
-// Queue of image paths that the apple in the game will cycle between.
-const APPLE_IMG_PATHS = ["/husky.jpeg","/golden-retriever.jpeg"];
+// Video that will be sampled for the apple's pattern.
+let video = null;
 
 // The game running
 let wasmInstanceMemory = null;
@@ -28,13 +28,11 @@ function initCanvas(canvas) {
  * Return a pattern for the game's apple object scaled as requested.
  */
 async function getApplePattern(ctx, scaleWidth, scaleHeight) {
-    // Cycle the patterns
-    const temp = APPLE_IMG_PATHS.shift();
-    APPLE_IMG_PATHS.push(temp);
-
-    const img = await fetch(APPLE_IMG_PATHS[0]);
-    const blob = await img.blob();
-    const imageBitmap = await createImageBitmap(blob);
+    if (!video) {
+        // Return some default if the video has not initialized yet.
+        return "green";
+    }
+    const imageToScale = video;
     // Scale the image.
     const scalingCanvas = document.createElement("canvas");
     // Set the canvas to be the same size as the eventual image in order to
@@ -42,7 +40,7 @@ async function getApplePattern(ctx, scaleWidth, scaleHeight) {
     scalingCanvas.width = scaleWidth;
     scalingCanvas.height = scaleHeight;
     const scalingCtx = scalingCanvas.getContext("2d");
-    scalingCtx.drawImage(imageBitmap, 0, 0, scaleWidth, scaleHeight);
+    scalingCtx.drawImage(imageToScale, 0, 0, scaleWidth, scaleHeight);
     // Create a pattern from the scaled image on the canvas.
     const pattern = ctx.createPattern(scalingCanvas, "repeat");
 
@@ -224,11 +222,20 @@ function restartGame(ctx, wasm, dowait=true) {
     }
 }
 
+async function initWebcamCapture() {
+    video = document.createElement("video");
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    video.srcObject = stream;
+    video.play();
+}
+
 // Initialize first game.
 window.onload = async () => {
     const { ctx, wasm } = await init(document.getElementById("canvas"));
 
     initKeyDownControl(ctx, wasm);
+
+    await initWebcamCapture();
 
     restartGame(ctx, wasm);
 };
