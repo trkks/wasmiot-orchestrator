@@ -3,7 +3,7 @@ const express = require("express");
 
 const { ObjectId } = require("mongodb");
 
-const { MODULE_DIR, WASMIOT_INIT_FUNCTION_NAME } = require("../constants.js");
+const { MODULE_DIR, WASMIOT_INIT_FUNCTION_NAME, EMPTY_WASM_FILEPATH } = require("../constants.js");
 const utils = require("../utils.js");
 
 
@@ -15,32 +15,6 @@ function setDatabase(db) {
     moduleCollection = db.collection("module");
     deploymentCollection = db.collection("deployment");
     deviceCollection = db.collection("device");
-}
-
-class ModuleCreated {
-    constructor(id) {
-        this.id = id;
-    }
-}
-
-class ModuleDescribed {
-    constructor(description) {
-        this.description = description;
-    }
-}
-
-class WasmFileUpload {
-    constructor(updateObj) {
-        this.type = "wasm";
-        this.updateObj = updateObj;
-    }
-}
-
-class DataFileUpload {
-    constructor(type, updateObj) {
-        this.type = type;
-        this.updateObj = updateObj;
-    }
 }
 
 /**
@@ -67,8 +41,19 @@ const createNewModule = async (metadata, files) => {
     // Create the database entry.
     let moduleId = (await moduleCollection.insertOne(metadata)).insertedId;
 
-    // Attach the Wasm binary.
-    return addModuleBinary({_id: moduleId}, files[0]).then(() => moduleId);
+    // Attach the Wasm binary. NOTE: If such a file is not provided, save an
+    // empty default implementation.
+    let mainWasmFile = (files && files.length)
+        ? files[0]
+        : {
+            fieldname: "wasm",
+            originalname: `${metadata.name}.wasm`,
+            filename: "empty.wasm",
+            path: EMPTY_WASM_FILEPATH,
+            mimetype: "application/wasm",
+        };
+    await addModuleBinary({_id: moduleId}, mainWasmFile);
+    return moduleId;
 };
 
 /**
@@ -270,7 +255,7 @@ const createModule = async (request, response) => {
 
         response
             .status(201)
-            .json(new ModuleCreated(result));
+            .json({ id: result });
     } catch (e) {
         if (e === "exists") {
             response.status(400).json(new utils.Error(undefined, e));
@@ -318,11 +303,11 @@ const getFileUpdate = async (file) => {
             console.error(...err);
             throw new utils.Error(...err);
         }
-        result = new WasmFileUpload(updateObj);
+        result = { type: "wasm", updateObj }
     } else {
         // All other filetypes are to be "mounted".
         updateObj[file.fieldname] = updateStruct;
-        result = new DataFileUpload(fileExtension, updateObj);
+        result = { type: fileExtension, updateObj };
     }
 
     return result;
@@ -401,7 +386,7 @@ const describeModule = async (request, response) => {
             request.files
         );
 
-        response.json(new ModuleDescribed(description));
+        response.json({ description });
     } catch (e) {
         let err;
         switch (e) {

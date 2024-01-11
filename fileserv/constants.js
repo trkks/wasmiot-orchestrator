@@ -69,4 +69,5 @@ module.exports = {
     UTILS_PATH,
     FILE_TYPES,
     WASMIOT_INIT_FUNCTION_NAME,
+    EMPTY_WASM_FILEPATH: "./files/empty.wasm",
 };
