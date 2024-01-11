@@ -46,7 +46,6 @@ paths:
               type: object
               required:
                 - name
-                - wasm
               properties:
                 name:
                   type: string
