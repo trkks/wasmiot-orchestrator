@@ -1,10 +1,5 @@
 # This script demonstrates the whole set and execution of the ICWE23 demo
 # scenario using the orchestrator CLI client (instead of web-GUI).
-#
-# NOTE: This script assumes a local installation of compatible version of
-# Node.js and you might want to run this inside the orchestrator devcontainer
-# instead! (Remember to mount your WebAssembly binaries, descriptions and
-# data-files as well!)
 
 if [ $# -lt 1 ]; then
     echo "ARG1: path to a .wasm file of camera required"
@@ -40,9 +35,9 @@ infmodelpathcontainer=/app/modules/inf.model
 set -e
 
 # Start needed containers.
-docker-compose up --detach
+docker-compose up --detach --build
 docker-compose -f docker-compose.example-devices.yml \
-    up --detach \
+    up --detach --build \
     adequate-webcam-laptop
 
 # Use the client container.
@@ -52,6 +47,7 @@ docker build -t $clientcontainername -f client.Dockerfile .
 # Inside this script, instead of using alias, define the partial docker command
 # as a variable for brevity.
 dorcli="docker run \
+    --rm
     --env ORCHESTRATOR_ADDRESS=http://wasmiot-orchestrator:3000 \
     --network=wasmiot-net \
     --volume=$campath:$campathcontainer:ro \
