@@ -23,8 +23,13 @@ let app;
  */
 let server;
 
+/*
+ * For operations on the database connection
+ */
+let dbClient;
+
 /**
- * For operations on the database connection and its collections.
+ * For operations on the database collections.
  */
 let database;
 
@@ -97,17 +102,29 @@ main()
 * @throws If the connection fails (timeouts).
 */
 async function initializeDatabase() {
-    let client = new MongoClient(MONGO_URI);
-    console.log("Connecting to database client: ", client);
+    dbClient = new MongoClient(MONGO_URI);
+    console.log("Connecting to database with client: ", dbClient);
 
-    try {
-        await client.connect();
-        database = client.db();
-        console.log("Database connection success!");
-    } catch(e) {
-        console.error("Database connection fail.");
-        // Propagate to caller.
-        throw e;
+    // Try a couple times if database startup/init is slow. No explicit
+    // waiting/sleeping, as the wait for connection timeout should be enough.
+    let dbError = null;
+    for (let i = 0; i < 3; i++) {
+        try {
+            await dbClient.connect();
+            database = dbClient.db();
+            dbError = null;
+            console.log("Database connection success!");
+            break;
+        } catch(e) {
+            console.error("Retrying database connection...");
+            dbError = e;
+        }
+    }
+
+    if (dbError) {
+        console.error("Database connection failed with retries.");
+        // Propagate latest error to caller.
+        throw dbError;
     }
 }
 
@@ -168,8 +185,8 @@ async function shutDown() {
         await server.close();
     }
 
-    if (database) {
-        await database.close();
+    if (dbClient) {
+        await dbClient.close();
         console.log("Closed database connection.");
     }
 
