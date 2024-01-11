@@ -68,11 +68,9 @@ const pushData = async (request, response) => {
     // but this implementation aims to emulate current supervisor behavior,
     // where any other than primitive integer-data is passed as a file.
     let id = await readFile("./files/exec/core/datalist/id", encoding="utf-8");
-    let entry = request.files
-        ? await readFile(
-            request.files.find(x => x.fieldname == "entry").path,
-            encoding="utf-8"
-        )
+    let nonPrimitiveEntry = request.files && request.files.find(x => x.fieldname == "entry");
+    let entry = nonPrimitiveEntry
+        ? await readFile(nonPrimitiveEntry.path, encoding="utf-8")
         : request.query.param0;
     await collection.updateOne({ _id: ObjectId(id) }, { $push: { history: entry } });
 
@@ -121,18 +119,18 @@ const FUNCTION_DESCRIPTIONS = {
         parameters: [{ name: "param0", type: "integer" }],
         method: "PUT",
         output: "integer", // Which index the entry was stored at.
-        mounts: [
-            {
-                name: "id",
-                mediaType: "application/octet-stream",
-                stage: "deployment"
+        mounts: {
+            deployment: {
+                id: {
+                    mediaType: "application/octet-stream",
+                }
             },
-            {
-                name: "entry",
-                mediaType: "application/octet-stream",
-                stage: "execution",
+            execution: {
+                entry: {
+                    mediaType: "application/octet-stream",
+                }
             }
-        ],
+        },
         middlewares: [fileUpload, pushData]
     },
     get: {
@@ -141,31 +139,31 @@ const FUNCTION_DESCRIPTIONS = {
         // TODO: All these octet streams should eventually be JSON, as they're
         // interpreted as such.
         output: "application/octet-stream",
-        mounts: [
-            {
-                name: "id",
-                mediaType: "application/octet-stream",
-                stage: "deployment"
+        mounts: {
+            deployment: {
+                id: {
+                    mediaType: "application/octet-stream"
+                }
             },
-            {
-                name: "entry",
-                mediaType: "application/octet-stream",
-                stage: "output",
+            output: {
+                entry: {
+                    mediaType: "application/octet-stream",
+                }
             }
-        ],
+        },
         middlewares: [fileUpload, getData]
     },
     delete: {
         parameters: [],
         method: "DELETE",
         output: "application/octet-stream",
-        mounts: [
-            {
-                name: "id",
-                mediaType: "application/octet-stream",
-                stage: "execution",
+        mounts: {
+            execution: {
+                id: {
+                    mediaType: "application/octet-stream"
+                }
             }
-        ],
+        },
         middlewares: [fileUpload, deleteData]
     },
 };
@@ -176,13 +174,11 @@ FUNCTION_DESCRIPTIONS[WASMIOT_INIT_FUNCTION_NAME] = {
     parameters: [],
     method: "POST",
     output: "application/octet-stream",
-    mounts: [
-        {
-            name: "id",
-            mediaType: "application/octet-stream",
-            stage: "output"
+    mounts: {
+        output: {
+            id: { mediaType: "application/octet-stream" }
         }
-    ],
+    },
     // This field is special for init-functions.
     init: initData
 };

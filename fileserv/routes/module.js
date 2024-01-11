@@ -68,42 +68,43 @@ const describeExistingModule = async (moduleId, descriptionManifest, files) => {
     // Prepare description for the module based on given info for functions
     // (params & outputs) and files (mounts).
     let functions = {};
-        for (let [funcName, func] of Object.entries(descriptionManifest).filter(x => typeof x[1] === "object")) {
+    for (let [funcName, func] of Object.entries(descriptionManifest).filter(x => typeof x[1] === "object")) {
         // The function parameters might be in a list or be in the form of 'paramN'
         // where N is the order of the parameter.
-        parameters = func.parameters || Object.entries(func)
+        const parameters = func.parameters || Object.entries(func)
                 .filter(([k, _v]) => k.startsWith("param"))
                 .map(([k, v]) => ({ name: k, type: v }));
+
+        // Insert default media types when needed.
+        const mountsWithMediaTypes = {};
+        for (let [stage, mounts] of Object.entries(func.mounts || {})) {
+            mountsWithMediaTypes[stage] = {};
+            for (let [name, _mount] of Object.entries(mounts)) {
+                // If no file is given the media type cannot be
+                // determined and is set to default.
+                const matchedFile = files.find(x => x.fieldname === name);
+                const mount = {
+                    mediaType: matchedFile?.mimetype || "application/octet-stream"
+                };
+                mountsWithMediaTypes[stage][name] = mount;
+             }
+        }
 
         functions[funcName] = {
             method: func.method.toLowerCase(),
             parameters: parameters,
-            mounts: "mounts" in func
-                ? Object.fromEntries(
-                    Object.values(func.mounts)
-                        // Map files by their form fieldname to this function's mount.
-                        .map(({ name, stage }) => ([ name, {
-                            // If no file is given the media type cannot be
-                            // determined and is set to default.
-                            mediaType: (
-                                files.find(x => x.fieldname === name)?.mimetype
-                                || "application/octet-stream"
-                            ),
-                            stage: stage,
-                        }]))
-                ) : {},
+            mounts: mountsWithMediaTypes,
             outputType:
                 // An output file takes priority over any other output type.
-                func.mounts?.find(({ stage }) => stage === "output")?.mediaType
-                || func.output
+                Object.values(func.mounts.output || {})[0]?.mediaType || func.output
         };
     }
 
-    // Check that the described mounts were actually uploaded.
+    // Check that the deployment files were actually uploaded.
     let missingFiles = [];
     for (let [funcName, func] of Object.entries(functions)) {
-        for (let [mountName, mount] of Object.entries(func.mounts)) {
-            if (mount.stage == "deployment" && !(files.find(x => x.fieldname === mountName))) {
+        for (let [mountName, _mount] of Object.entries(func.mounts.deployment || {})) {
+            if (!(files.find(x => x.fieldname === mountName))) {
                 missingFiles.push([funcName, mountName]);
             }
         }
@@ -117,7 +118,7 @@ const describeExistingModule = async (moduleId, descriptionManifest, files) => {
         if (WASMIOT_INIT_FUNCTION_NAME in functions) {
             let actuallyMissingFiles = [];
             for (let [funcName, mountName] of missingFiles) {
-                if (mountName in functions[WASMIOT_INIT_FUNCTION_NAME].mounts) {
+                if (mountName in functions[WASMIOT_INIT_FUNCTION_NAME].mounts.output) {
                     console.log(`NOTE: Function '${funcName}' should receive mount '${mountName}' from init-function later.`);
                 } else {
                     actuallyMissingFiles.push([funcName, mountName]);
