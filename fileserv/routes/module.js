@@ -77,17 +77,15 @@ const describeExistingModule = async (moduleId, descriptionManifest, files) => {
 
         // Insert default media types when needed.
         const mountsWithMediaTypes = {};
-        for (let [stage, mounts] of Object.entries(func.mounts || {})) {
-            mountsWithMediaTypes[stage] = {};
-            for (let [name, _mount] of Object.entries(mounts)) {
-                // If no file is given the media type cannot be
-                // determined and is set to default.
-                const matchedFile = files.find(x => x.fieldname === name);
-                const mount = {
-                    mediaType: matchedFile?.mimetype || "application/octet-stream"
-                };
-                mountsWithMediaTypes[stage][name] = mount;
-             }
+        for (let { name, stage } of Object.values(func.mounts || {})) {
+            // If no file is given the media type cannot be
+            // determined and is set to default.
+            const matchedFile = files.find(x => x.fieldname === name);
+            const mount = {
+                stage,
+                mediaType: matchedFile?.mimetype || "application/octet-stream"
+            };
+            mountsWithMediaTypes[name] = mount;
         }
 
         functions[funcName] = {
@@ -96,15 +94,17 @@ const describeExistingModule = async (moduleId, descriptionManifest, files) => {
             mounts: mountsWithMediaTypes,
             outputType:
                 // An output file takes priority over any other output type.
-                Object.values(func.mounts.output || {})[0]?.mediaType || func.output
+                func.mounts?.find(({ stage }) => stage === "output")?.mediaType
+                || func.output
         };
     }
 
     // Check that the deployment files were actually uploaded.
     let missingFiles = [];
     for (let [funcName, func] of Object.entries(functions)) {
-        for (let [mountName, _mount] of Object.entries(func.mounts.deployment || {})) {
-            if (!(files.find(x => x.fieldname === mountName))) {
+        for (let [mountName, { stage }] of Object.entries(func.mounts || {})) {
+            if (stage === "deployment"
+                && !(files.find(x => x.fieldname === mountName))) {
                 missingFiles.push([funcName, mountName]);
             }
         }
@@ -118,7 +118,7 @@ const describeExistingModule = async (moduleId, descriptionManifest, files) => {
         if (WASMIOT_INIT_FUNCTION_NAME in functions) {
             let actuallyMissingFiles = [];
             for (let [funcName, mountName] of missingFiles) {
-                if (mountName in functions[WASMIOT_INIT_FUNCTION_NAME].mounts.output) {
+                if (mountName in functions[WASMIOT_INIT_FUNCTION_NAME].mounts) {
                     console.log(`NOTE: Function '${funcName}' should receive mount '${mountName}' from init-function later.`);
                 } else {
                     actuallyMissingFiles.push([funcName, mountName]);

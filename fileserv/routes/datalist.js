@@ -119,18 +119,18 @@ const FUNCTION_DESCRIPTIONS = {
         parameters: [{ name: "param0", type: "integer" }],
         method: "PUT",
         output: "integer", // Which index the entry was stored at.
-        mounts: {
-            deployment: {
-                id: {
-                    mediaType: "application/octet-stream",
-                }
+        mounts: [
+            {
+                name: "id",
+                mediaType: "application/octet-stream",
+                stage: "deployment"
             },
-            execution: {
-                entry: {
-                    mediaType: "application/octet-stream",
-                }
+            {
+                name: "entry",
+                mediaType: "application/octet-stream",
+                stage: "execution",
             }
-        },
+        ],
         middlewares: [fileUpload, pushData]
     },
     get: {
@@ -139,31 +139,31 @@ const FUNCTION_DESCRIPTIONS = {
         // TODO: All these octet streams should eventually be JSON, as they're
         // interpreted as such.
         output: "application/octet-stream",
-        mounts: {
-            deployment: {
-                id: {
-                    mediaType: "application/octet-stream"
-                }
+        mounts: [
+            {
+                name: "id",
+                mediaType: "application/octet-stream",
+                stage: "deployment"
             },
-            output: {
-                entry: {
-                    mediaType: "application/octet-stream",
-                }
+            {
+                name: "entry",
+                mediaType: "application/octet-stream",
+                stage: "output"
             }
-        },
+        ],
         middlewares: [fileUpload, getData]
     },
     delete: {
         parameters: [],
         method: "DELETE",
         output: "application/octet-stream",
-        mounts: {
-            execution: {
-                id: {
-                    mediaType: "application/octet-stream"
-                }
+        mounts: [
+            {
+                name: "id",
+                mediaType: "application/octet-stream",
+                stage: "execution"
             }
-        },
+        ],
         middlewares: [fileUpload, deleteData]
     },
 };
@@ -174,11 +174,13 @@ FUNCTION_DESCRIPTIONS[WASMIOT_INIT_FUNCTION_NAME] = {
     parameters: [],
     method: "POST",
     output: "application/octet-stream",
-    mounts: {
-        output: {
-            id: { mediaType: "application/octet-stream" }
+    mounts: [
+        {
+            name: "id",
+            mediaType: "application/octet-stream",
+            stage: "output"
         }
-    },
+    ],
     // This field is special for init-functions.
     init: initData
 };
