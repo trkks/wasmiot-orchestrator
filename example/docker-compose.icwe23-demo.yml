@@ -1,0 +1,63 @@
+version: '3.4'
+
+services:
+  icwe23-demo-orchestrator:
+    build:
+      # This compose is expected to run from the example/ directory.
+      context: ../fileserv
+      dockerfile: ./Dockerfile
+    environment:
+      MONGODB_HOST: icwe23-demo-mongo
+      MONGODB_PORT: 27017
+      MONGO_ROOT_USERNAME: root
+      MONGO_ROOT_PASSWORD: example
+    command: nodejs ./server.js
+
+  icwe23-demo-mongo:
+    image: mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    command: mongod --port 27017
+    volumes:
+      - mongo-config:/DATA/CONFIGDB
+      - mongo-db:/DATA/DB
+
+  icwe23-demo-webcam:
+    build:
+      context: ../wasmiot-supervisor
+    environment:
+      - DEVICE_TYPE=webcam-device
+      - FLASK_APP=webcam
+    privileged: true
+    volumes:
+      # The device(s) need compatible descriptions.
+      - type: bind
+        source: ../example/device1/configs/wasmiot-device-description.json
+        target: /app/instance/configs/wasmiot-device-description.json
+    deploy:
+      # Pretend that this supervisor is on a lower-grade/simpler machine.
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 1GB
+
+  icwe23-demo-compute-box:
+    build:
+      context: ../wasmiot-supervisor
+    environment:
+      - DEVICE_TYPE=compute-device
+      - FLASK_APP=compute-box
+    volumes:
+      - type: bind
+        source: ../example/device1/configs/wasmiot-device-description.json
+        target: /app/instance/configs/wasmiot-device-description.json
+
+volumes:
+  mongo-config:
+  mongo-db:
+
+networks:
+  default:
+    name: icwe23-demo-wasmiot-net
