@@ -75,15 +75,17 @@ const describeExistingModule = async (moduleId, descriptionManifest, files) => {
                 .filter(([k, _v]) => k.startsWith("param"))
                 .map(([k, v]) => ({ name: k, type: v }));
 
-        // Insert default media types when needed.
+        // Insert matching media types.
+        // NOTE: Because the module description file already has the
+        // mounts' media types, the file __media types received in request are
+        // ignored__.
         const mountsWithMediaTypes = {};
-        for (let { name, stage } of Object.values(func.mounts || {})) {
-            // If no file is given the media type cannot be
-            // determined and is set to default.
+        for (let { name, stage, mediaType } of Object.values(func.mounts || {})) {
+            // If no file is given the media type is set to default.
             const matchedFile = files.find(x => x.fieldname === name);
             const mount = {
                 stage,
-                mediaType: matchedFile?.mimetype || "application/octet-stream"
+                mediaType: matchedFile ? mediaType : "application/octet-stream"
             };
             mountsWithMediaTypes[name] = mount;
         }

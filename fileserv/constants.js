@@ -36,7 +36,8 @@ const FILE_TYPES = [
     "image/png",
     "image/jpeg",
     "image/jpg",
-    "application/octet-stream"
+    "application/octet-stream",
+    "text/html",
 ];
 
 /**
