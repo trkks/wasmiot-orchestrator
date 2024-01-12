@@ -549,7 +549,7 @@ function fetchAndFindResources(sequence, availableDevices) {
         if (modulee.exports.find(x => x.name === funcName) !== undefined) {
             selectedModules.push(modulee);
         } else {
-            throw `Failed to find function '${funcName}' from requested module: ${modulee}`;
+            throw `Failed to find function '${funcName}' from requested module: ${JSON.stringify(modulee, null, 2)}`;
         }
 
         function deviceSatisfiesModule(d, m) {

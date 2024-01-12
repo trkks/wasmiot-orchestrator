@@ -7,7 +7,7 @@ const WAIT_READY = 0;//3000;
 const GAME_TICK = 150;
 
 // Path where the .wasm containing game logic can be loaded from.
-const GAME_WASM_PATH = "/snake/target/wasm32-unknown-unknown/release/snake.wasm";
+const GAME_WASM_PATH = "snake.wasm";
 
 // Video that will be sampled for the apple's pattern.
 let video = null;

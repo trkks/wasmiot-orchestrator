@@ -38,6 +38,8 @@ const FILE_TYPES = [
     "image/jpg",
     "application/octet-stream",
     "text/html",
+    "text/javascript",
+    "application/wasm",
 ];
 
 /**

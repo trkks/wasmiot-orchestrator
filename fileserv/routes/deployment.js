@@ -87,7 +87,8 @@ const createDeployment = async (request, response) => {
     } catch (err) {
         let errorMsg = "Failed constructing solution for manifest";
 
-        console.error(errorMsg, err, err.stack);
+        console.error(errorMsg, err);
+        console.error(err.stack);
 
         response
             .status(500)
