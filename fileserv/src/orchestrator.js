@@ -143,15 +143,23 @@ class Orchestrator {
     }
 
     async solve(manifest, resolving=false) {
+        // Fetch ALL devices here in order to pass them on if needed preventing repeated DB-queries.
+        const availableDevices = await (await this.deviceCollection.find()).toArray();
         // Gather the devices and modules attached to deployment in "full"
         // (i.e., not just database IDs).
-        let availableDevices = await (await this.deviceCollection.find()).toArray();
-        // The original deployment should be saved to database as is with the
-        // IDs TODO: Exactly why should it be saved?.
         let hydratedManifest = structuredClone(manifest);
         for (let step of hydratedManifest.sequence) {
-            step.device = availableDevices.find(x => x._id.toString() === step.device);
-            // Find with id or name to support finding core modules more easily.
+            // Find with id _or name_ to allow selecting resources more
+            // human-friendly.
+            try {
+                // Test ObjecId'ness of the id.
+                const _ = ObjectId(step.device);
+                step.device = availableDevices.find(x => x._id.toString() === step.device);
+            } catch (e) {
+                console.error(`Passed in device-ID '${step.device}' not compatible as ObjectID. Using it as 'name' instead`);
+                step.device = availableDevices.find(x => x.name === step.device);
+            }
+
             let filter = {};
             try {
                 filter._id = ObjectId(step.module)
@@ -455,7 +463,7 @@ function mountsFor(modulee, func, endpoint) {
     // Check that all the expected media types are supported.
     let found_unsupported_medias = request_body_paths.filter(x => !constants.FILE_TYPES.includes(x.media_type));
     if (found_unsupported_medias.length > 0) {
-        throw new Error(`Input file types not supported: "${found_unsupported_medias}"`);
+        throw new Error(`Input file types not supported: "${JSON.stringify(found_unsupported_medias, null, 2)}"`);
     }
 
     // Get a list of expected file parameters. The 'name' is actually

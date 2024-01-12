@@ -204,10 +204,10 @@ const moduleEndpointDescriptions = (modulee, functionDescriptions) => {
         };
         // Inside the `requestBody`-field, describe mounts that are used as
         // "input" to functions.
-        let mounts = Object.entries(func.mounts).filter(x => x[1].stage !== "output");
-        if (mounts.length > 0) {
+        let mountInfos = Object.entries(func.mounts).filter(x => x[1].stage !== "output");
+        if (mountInfos.length > 0) {
             let mountEntries = Object.fromEntries(
-                    mounts.map(([path, _mount]) => [
+                mountInfos.map(([path, _mount]) => [
                         path,
                         {
                             type: "string",
@@ -216,7 +216,7 @@ const moduleEndpointDescriptions = (modulee, functionDescriptions) => {
                     ])
             );
             let mountEncodings = Object.fromEntries(
-                mounts.map(([path, mount]) => [path, { contentType: mount.mediaType }])
+                mountInfos.map(([path, mount]) => [path, { contentType: mount.mediaType }])
             );
             let content = {
                 "multipart/form-data": {

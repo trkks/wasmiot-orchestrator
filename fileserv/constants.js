@@ -36,7 +36,8 @@ const FILE_TYPES = [
     "image/png",
     "image/jpeg",
     "image/jpg",
-    "application/octet-stream"
+    "application/octet-stream",
+    "text/html",
 ];
 
 /**
@@ -69,4 +70,5 @@ module.exports = {
     UTILS_PATH,
     FILE_TYPES,
     WASMIOT_INIT_FUNCTION_NAME,
+    EMPTY_WASM_FILEPATH: "./files/empty.wasm",
 };

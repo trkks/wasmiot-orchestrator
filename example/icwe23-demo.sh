@@ -1,5 +1,7 @@
 # This script demonstrates the whole set and execution of the ICWE23 demo
 # scenario using the orchestrator CLI client (instead of web-GUI).
+#
+# NOTE: This script is supposed to run from project root, NOT e.g. from the example/ dir.
 
 if [ $# -lt 1 ]; then
     echo "ARG1: path to a .wasm file of camera required"
@@ -34,28 +36,31 @@ infmodelpathcontainer=/app/modules/inf.model
 
 set -e
 
-# Start needed containers.
-docker-compose up --detach --build
-docker-compose -f docker-compose.example-devices.yml \
-    up --detach --build \
-    adequate-webcam-laptop
+# Start containers to have interaction in the system.
+docker-compose -f example/docker-compose.icwe23-demo.yml up --build --detach
 
 # Use the client container.
 clientcontainername="wasmiot-orcli"
 docker build -t $clientcontainername -f client.Dockerfile .
 
+servercontainername="icwe23-demo-orchestrator"
+dockernetworkname="icwe23-demo-wasmiot-net"
 # Inside this script, instead of using alias, define the partial docker command
 # as a variable for brevity.
 dorcli="docker run \
     --rm
-    --env ORCHESTRATOR_ADDRESS=http://wasmiot-orchestrator:3000 \
-    --network=wasmiot-net \
+    --env ORCHESTRATOR_ADDRESS=http://${servercontainername}:3000 \
+    --network=$dockernetworkname \
     --volume=$campath:$campathcontainer:ro \
     --volume=$camdescpath:$camdescpathcontainer:ro \
     --volume=$infpath:$infpathcontainer:ro \
     --volume=$infdescpath:$infdescpathcontainer:ro \
     --volume=$infmodelpath:$infmodelpathcontainer:ro \
     $clientcontainername"
+
+# Wait a bit before requests in order to give time for orchestrator to start.
+echo "Waiting a bit until orchestrator should have started..."
+sleep 3 
 
 # Remove possibly conflicting resources that are there already.
 echo "---"
@@ -78,8 +83,8 @@ $dorcli module desc inf $infdescpathcontainer \
 
 # Create a deployment taking a picture and directing it to inference.
 $dorcli deployment create icwe23-demo \
-    -d -m cam -f take_image_predefined_path \
-    -d -m inf -f infer_predefined_paths
+    -d webcam -m cam -f take_image_predefined_path \
+    -d compute-box -m inf -f infer_predefined_paths
 
 # Install the deployment.
 $dorcli deployment deploy icwe23-demo
@@ -87,9 +92,9 @@ $dorcli deployment deploy icwe23-demo
 # Define cleanup if execution succeeds at first try.
 cleanup() {
     echo "Example has finished. Composing down..."
-    docker-compose down
-    docker-compose -f docker-compose.example-devices.yml down
+    docker-compose -f example/docker-compose.icwe23-demo.yml down
     echo "Done."
+    exit 0
 }
 
 # Execute. This might definitely fail at first, if the modules needs to be
@@ -104,7 +109,7 @@ echo "Assuming that the execution failed because WebAssembly has not yet finishe
 if [ ! -z $6 ]; then
     waittime=$6
 else
-    waittime=35
+    waittime=15
 fi
 
 
@@ -117,6 +122,5 @@ done
 
 echo
 echo "Trying to execute again..."
-$dorcli execute icwe23-demo || printf "\n!!!\nFailed again. You could try increasing the wait time by passing it as ARG6.\n\n"
+$dorcli execute icwe23-demo && cleanup || printf "\n!!!\nFailed again. You could try increasing the wait time by passing it as ARG6.\nNOTE that the containers are left unremoved for you to inspect their logs!\n\n"
 
-cleanup

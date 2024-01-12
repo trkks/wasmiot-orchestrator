@@ -13,13 +13,21 @@ program
     .command("create")
     .description("Create a new module")
     .argument("<module-name-string>", "Name to give to module")
-    .argument("<input-file>", "Path to module's .wasm file")
+    .argument("[input-file]", "Path to module's .wasm file")
     .action(async (name, wasmPath) => {
-        const wasm = await readFile(wasmPath);
-        const wasmBlob = new Blob([wasm], { type: "application/wasm" });
-        const result = await client.default.postFileModule({
-            name, wasm: wasmBlob
-        });
+        const input = {
+            name,
+            wasm: (
+                wasmPath
+                ? new Blob(
+                    [await readFile(wasmPath)],
+                    { type: "application/wasm" }
+                )
+                : undefined
+            )
+        };
+
+        const result = await client.default.postFileModule(input);
         console.log(JSON.stringify(result, null, 4));
     });
 

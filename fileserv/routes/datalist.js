@@ -68,11 +68,9 @@ const pushData = async (request, response) => {
     // but this implementation aims to emulate current supervisor behavior,
     // where any other than primitive integer-data is passed as a file.
     let id = await readFile("./files/exec/core/datalist/id", encoding="utf-8");
-    let entry = request.files
-        ? await readFile(
-            request.files.find(x => x.fieldname == "entry").path,
-            encoding="utf-8"
-        )
+    let nonPrimitiveEntry = request.files && request.files.find(x => x.fieldname == "entry");
+    let entry = nonPrimitiveEntry
+        ? await readFile(nonPrimitiveEntry.path, encoding="utf-8")
         : request.query.param0;
     await collection.updateOne({ _id: ObjectId(id) }, { $push: { history: entry } });
 
@@ -150,7 +148,7 @@ const FUNCTION_DESCRIPTIONS = {
             {
                 name: "entry",
                 mediaType: "application/octet-stream",
-                stage: "output",
+                stage: "output"
             }
         ],
         middlewares: [fileUpload, getData]
@@ -163,7 +161,7 @@ const FUNCTION_DESCRIPTIONS = {
             {
                 name: "id",
                 mediaType: "application/octet-stream",
-                stage: "execution",
+                stage: "execution"
             }
         ],
         middlewares: [fileUpload, deleteData]
