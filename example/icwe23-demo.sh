@@ -37,7 +37,7 @@ infmodelpathcontainer=/app/modules/inf.model
 set -e
 
 # Start containers to have interaction in the system.
-docker-compose -f example/docker-compose.icwe23-demo.yml up --build --detach
+COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker-compose -f example/docker-compose.icwe23-demo.yml up --build --detach
 
 # Use the client container.
 clientcontainername="wasmiot-orcli"
@@ -60,18 +60,22 @@ dorcli="docker run \
 
 # Wait a bit before requests in order to give time for orchestrator to start.
 echo "Waiting a bit until orchestrator should have started..."
-sleep 3 
+sleep 7
 
 # Remove possibly conflicting resources that are there already.
 echo "---"
 echo "Removing existing conflicting resources..."
 $dorcli device rm
-$dorcli device scan
 $dorcli module rm cam
 $dorcli module rm inf
 $dorcli deployment rm icwe23-demo
 echo "Removal done"
 echo "---"
+
+$dorcli device scan
+echo "Waiting a bit until rescanned devices should have introduced themselves..."
+sleep 3
+
 
 # Create needed camera and inference modules and describe their interfaces.
 $dorcli module create cam $campathcontainer
