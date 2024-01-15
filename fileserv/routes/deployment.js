@@ -16,20 +16,51 @@ function setOrchestrator(orch) {
     orchestrator = orch;
 }
 
+
+const validateManifestSequence = (sequence) => {
+    if (!(typeof sequence === "object" && sequence instanceof Array)) {
+        throw "manifest's operation sequence must be a list";
+    }
+
+    for (let node of sequence) {
+        if (!(typeof node.module === "string"))
+            { throw "manifest node must have a module"; }
+        if (!(typeof node.func === "string"))
+            { throw "manifest node must have a function"; }
+    }
+};
+
+
+const validateManifestMainScript = (mainScript) => {
+    if (!(typeof mainScript.name === "string"))
+        { throw "manifest main script must have a module name"; }
+    if (mainScript.procedure && !(typeof mainScript.procedure === "string"))
+        { throw "manifest main procedure must be a function name"; }
+};
+
+
 /**
  * Validate manifest (this is static typing manually).
  */
 const validateManifest = (mani) => {
     if (!(typeof mani.name === "string"))
         { throw "manifest must have a name"; }
-    if (!(typeof mani.sequence === "object" && mani.sequence instanceof Array))
-        { throw "manifest must have a sequence of operations"; }
-    for (let node of mani.sequence) {
-        if (!(typeof node.module === "string"))
-            { throw "manifest node must have a module"; }
-        if (!(typeof node.func === "string"))
-            { throw "manifest node must have a function"; }
+    
+    // Check manifests "execution model".
+    const EXECUTIONMODELS = [
+        // Sequence means piping outputs of functions as the next one's input.
+        ["sequence", validateManifestSequence],
+        // Main script means that there is some file that when run
+        // takes control of the execution of other functions.
+        ["mainScript", validateManifestMainScript],
+    ];
+    for (const [s, f] of EXECUTIONMODELS) {
+        if (mani[s]) {
+            f(mani[s]);
+        }
     }
+    if (EXECUTIONMODELS.every(([s, _]) => mani[s]))
+        { throw "manifest must only have one execution model"; }
 }
 
 /**

@@ -115,6 +115,9 @@ class DeploymentNode {
         this.instructions = new Instructions();
         // Mounts needed for the module's functions.
         this.mounts = {};
+        // Base URLs for peers of a node; basically all other nodes in
+        // deployment are in here somewhere.
+        this.peers = {};
     }
 }
 
@@ -377,6 +380,26 @@ function createSolution(deploymentId, sequence, packageBaseUrl) {
         return `no endpoints defined for device '${unnecessaryDevice[0]}'`;
     }
 
+    // Now that the devices and functions are solved, do another iteration to
+    // populate each ones' peers.
+    const namePaths = sequence.reduce(
+        (acc, x) => {
+            if (!acc[x.module.name]) {
+                acc[x.module.name] = [];
+            }
+            acc[x.module.name].push(x.func);
+            return acc;
+        },
+        {}
+    );
+    for (let x of Object.keys(deploymentsToDevices)) {
+        deploymentsToDevices[x].peers = peersFor(
+            x,
+            namePaths,
+            deploymentsToDevices
+        );
+    }
+
     // According to deployment manifest describing the composed
     // application-calls, create a structure to represent the expected behaviour
     // and flow of data between nodes.
@@ -506,6 +529,37 @@ function mountsFor(modulee, func, endpoint) {
         [MountStage.DEPLOYMENT]: deployment_stage_mount_paths,
         [MountStage.OUTPUT]: output_stage_mount_paths,
     };
+}
+
+/**
+ * Create a mapping to lists of peer-device execution URLs excluding the
+ * `device` itself.
+ * @param {*} device Device to not include.
+ * @param {{ moduleName: funcName }} namePaths Deployment's functions by modules 
+ * @param {*} nodes Mapping of devices to their individual
+ * deployment information.
+ */
+function peersFor(device, namePaths, nodes) {
+    let obj = {};
+    for (let moduleName of Object.keys(namePaths)) {
+        const funcNames = namePaths[moduleName];
+        obj[moduleName] = {};
+        for (let funcName of funcNames) {
+            obj[moduleName][funcName] = [];
+            for (let peer of Object.keys(nodes)) {
+                if (peer === device) {
+                    continue;
+                }
+                if (nodes[peer].endpoints[moduleName]
+                    && nodes[peer].endpoints[moduleName][funcName]) {
+                    const peerEndpoint = nodes[peer].endpoints[moduleName][funcName];
+                    const peerUrl = `${peerEndpoint.url}/${peerEndpoint.path}`
+                    obj[moduleName][funcName].push(peerUrl)
+                }
+            }
+        }
+    }
+    return obj;
 }
 
 /**

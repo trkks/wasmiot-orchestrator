@@ -34,6 +34,16 @@ infpathcontainer=/app/modules/inf.wasm
 infdescpathcontainer=/app/modules/inf.json
 infmodelpathcontainer=/app/modules/inf.model
 
+# Printing the message $1, stop and wait for $2 seconds.
+wait_prompt() {
+    for i in $(seq 0 $2);
+    do
+        printf "\r$1... (%2ds)" $(( $2 - $i ))
+        sleep 1
+    done
+    echo ""
+}
+
 set -e
 
 # Start containers to have interaction in the system.
@@ -59,8 +69,7 @@ dorcli="docker run \
     $clientcontainername"
 
 # Wait a bit before requests in order to give time for orchestrator to start.
-echo "Waiting a bit until orchestrator should have started..."
-sleep 7
+wait_prompt "Waiting a bit until orchestrator should have started" 7
 
 # Remove possibly conflicting resources that are there already.
 echo "---"
@@ -73,8 +82,7 @@ echo "Removal done"
 echo "---"
 
 $dorcli device scan
-echo "Waiting a bit until rescanned devices should have introduced themselves..."
-sleep 3
+wait_prompt "Waiting a bit until rescanned devices should have introduced themselves" 3
 
 
 # Create needed camera and inference modules and describe their interfaces.
@@ -116,15 +124,8 @@ else
     waittime=15
 fi
 
+wait_prompt "Waiting for supervisor to compile wasm" $waittime
 
-# Wait for a while so that the module gets compiled...
-for i in $(seq 0 $waittime);
-do
-    printf "\rWaiting for supervisor to compile wasm... (%2ds)" $(( $waittime - $i ))
-    sleep 1
-done
-
-echo
 echo "Trying to execute again..."
 $dorcli execute icwe23-demo && cleanup || printf "\n!!!\nFailed again. You could try increasing the wait time by passing it as ARG6.\nNOTE that the containers are left unremoved for you to inspect their logs!\n\n"
 
