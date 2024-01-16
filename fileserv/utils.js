@@ -113,7 +113,15 @@ const fileUpload =
  * @returns { url, path, method, operationObj }
  */
 function getStartEndpoint(deployment) {
-    let startStep = deployment.sequence[0];
+    let startStep;
+    if (deployment.sequence)
+        { startStep = deployment.resourcePairings[deployment.sequence[0]]; }
+    else if (deployment.mainScript)
+        { startStep = deployment.mainScript; }
+    else {
+        throw "deployment manifest execution model not defined";
+    }
+
     let modId = startStep.module;
     let modName = deployment
         .fullManifest[startStep.device]

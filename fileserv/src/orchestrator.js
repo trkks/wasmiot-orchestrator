@@ -146,41 +146,43 @@ class Orchestrator {
     }
 
     async solve(manifest, resolving=false) {
+        // Handle the case when sequence is used, thus the resource pairings can
+        // be deducted from it instead of having to include them excplicitly in
+        // the manifest(request).
+        if (manifest.sequence) {
+            // Change the sequence's pairings into indices into a separate
+            // pairings structure.
+            // Remove possible duplicates __but keep the order__ so that
+            // sequence can still index into the selected resources.
+            manifest.resourcePairings = [];
+            for (let i in manifest.sequence) {
+                let x = manifest.sequence[i];
+                let pairingIdx = manifest.resourcePairings.findIndex(
+                    y => y.device === x.device
+                        && y.module === x.module
+                        && y.func === x.func
+                );
+                // TODO: What if the manifest requests two pairings with
+                // null-devices i.e. [[null, m1, f1], [null, m1, f1]], but they'd
+                // optimally be solved to go on different devices?
+                if (pairingIdx < 0) {
+                    pairingIdx = manifest.resourcePairings.length;
+                    manifest.resourcePairings.push(structuredClone(x));
+                }
+
+                manifest.sequence[i] = pairingIdx;
+            }
+        }
+
         // Fetch ALL devices here in order to pass them on if needed preventing repeated DB-queries.
         const availableDevices = await (await this.deviceCollection.find()).toArray();
-        // Gather the devices and modules attached to deployment in "full"
-        // (i.e., not just database IDs).
-        let hydratedManifest = structuredClone(manifest);
-        for (let step of hydratedManifest.sequence) {
-            // Find with id _or name_ to allow selecting resources more
-            // human-friendly.
-            try {
-                // Test ObjecId'ness of the id.
-                const _ = ObjectId(step.device);
-                step.device = availableDevices.find(x => x._id.toString() === step.device);
-            } catch (e) {
-                console.error(`Passed in device-ID '${step.device}' not compatible as ObjectID. Using it as 'name' instead`);
-                step.device = availableDevices.find(x => x.name === step.device);
-            }
 
-            let filter = {};
-            try {
-                filter._id = ObjectId(step.module)
-            } catch (e) {
-                console.error(`Passed in module-ID '${step.module}' not compatible as ObjectID. Using it as 'name' instead`);
-                filter.name = step.module;
-            }
-
-            // Fetch the modules from remote URL similarly to how Docker fetches
-            // from registry/URL if not found locally.
-            // TODO: Actually use a remote-fetch.
-            step.module = await this.moduleCollection.findOne(filter);
-        }
+        manifest.resourcePairings = await fillWithResourceObjects(manifest.resourcePairings, availableDevices, this.moduleCollection);
 
         //TODO: Start searching for suitable packages using saved file.
         //startSearch();
 
-        let assignedSequence = fetchAndFindResources(hydratedManifest.sequence, availableDevices);
+        let assignedResources = fetchAndFindResources(manifest.resourcePairings, availableDevices);
 
         // Now that the deployment is deemed possible, an ID is needed to
         // construct the instructions on devices.
@@ -191,7 +193,7 @@ class Orchestrator {
             deploymentId = (await this.deploymentCollection.insertOne(manifest)).insertedId;
         }
 
-        let solution = createSolution(deploymentId, assignedSequence, this.packageManagerBaseUrl)
+        let solution = createSolution(deploymentId, manifest,assignedResources, this.packageManagerBaseUrl)
 
         // Update the deployment with the created solution.
         this.deploymentCollection.updateOne(
@@ -242,7 +244,7 @@ class Orchestrator {
      * sequence.
      */
     async schedule(deployment, { body, files }) {
-        // Pick the starting point based on sequence's first device and function.
+        // Pick the starting point based on execution model.
         const { url, path, method, request } = utils.getStartEndpoint(deployment);
 
         // OpenAPI Operation Object's parameters.
@@ -287,6 +289,80 @@ class Orchestrator {
     }
 }
 
+
+/**
+ * For the sequence execution model, come up with the nth instruction in the execution chain.
+ * @param {*} n 
+ * @param {*} device Device to place this instruction onto.
+ * @param {*} modulee Module that this instruction applies to.
+ * @param {*} func Function that this instruction applies to.
+ * @param {*} resourcePairings Mapping of resources.
+ * @param {*} deployment Set of related deployment nodes.
+ * @returns instruction
+ */
+function nthInstructionForSequence(n, device, modulee, func, resourcePairings, deployment) {
+    let deviceIdStr = device._id.toString();
+
+    let forwardFunc = resourcePairings[n + 1]?.func;
+    let forwardDeviceIdStr = resourcePairings[n + 1]?.device._id.toString();
+    let forwardDeployment = deployment[forwardDeviceIdStr];
+
+    let forwardEndpoint;
+    if (forwardFunc === undefined || forwardDeployment === undefined) {
+        forwardEndpoint = null;
+    } else {
+        // INVARIANT: The order of resource pairings attached to deployment is
+        // still the same as it is based on the execution sequence in manifest.
+        let forwardModuleId = resourcePairings[n + 1]?.module.name;
+        forwardEndpoint = forwardDeployment.endpoints[forwardModuleId][forwardFunc];
+    }
+
+    // This is needed at device to figure out how to interpret WebAssembly
+    // function's result.
+    let sourceEndpoint = deployment[deviceIdStr].endpoints[modulee.name][func];
+
+    let instruction = {
+        from: sourceEndpoint,
+        to: forwardEndpoint,
+    };
+
+    return instruction;
+}
+
+/**
+ * Based on the execution model of deployment, add needed information into the
+ * given deployment.
+ * @param {*} manifest Original manifest where the execution model can be deducted from.
+ * @param {*} deployment The set of deployment nodes to add
+ * information into (NOTE: out-parameter).
+ * @param {*} resourcePairings Mappings of resources.
+ */
+function applyExecutionModel(manifest, deployment, resourcePairings) {
+    if (manifest.sequence) {
+        // According to deployment manifest describing the sequence of
+        // application-calls, create a structure to represent the expected
+        // behaviour and flow of data between nodes for the supervisors to
+        // understand.
+        for (let i = 0; i < resourcePairings.length; i++) {
+            const [device, modulee, func] = Object.values(resourcePairings[i]);
+            const instruction = nthInstructionForSequence(
+                i,
+                device, modulee, func,
+                resourcePairings, deployment
+            );
+
+            // Attach the created details of deployment to matching device.
+            let deviceIdStr = device._id.toString();
+            deployment[deviceIdStr].instructions.add(modulee.name, func, instruction);
+        }
+    } else if (manifest.mainScript) {
+        // No operations needed, as the control of execution is fully
+        // contained inside the main script in question.
+    } else {
+        throw `could not deduce execution model from deployment manifest: '${JSON.stringify(manifest, null, 2)}'`;
+    }
+}
+
 /**
  * Solve for M2M-call interfaces and create individual instructions
  * (deployments) to send to devices.
@@ -295,10 +371,10 @@ class Orchestrator {
  * @returns The created solution.
  * @throws An error if building the solution fails.
  */
-function createSolution(deploymentId, sequence, packageBaseUrl) {
+function createSolution(deploymentId, manifest, resourcePairings, packageBaseUrl) {
     let deploymentsToDevices = {};
-    for (let step of sequence) {
-        let deviceIdStr = step.device._id.toString();
+    for (let x of resourcePairings) {
+        let deviceIdStr = x.device._id.toString();
 
         // __Prepare__ to make a mapping of devices and their instructions in order to
         // bulk-send the instructions to each device when deploying.
@@ -307,12 +383,12 @@ function createSolution(deploymentId, sequence, packageBaseUrl) {
         }
 
         // Add module needed on device.
-        let moduleDataForDevice = moduleData(step.module, packageBaseUrl);
+        let moduleDataForDevice = moduleData(x.module, packageBaseUrl);
         deploymentsToDevices[deviceIdStr].modules.push(moduleDataForDevice);
 
         // Add needed endpoint to call function in said module on the device.
-        let funcPathKey = utils.supervisorExecutionPath(step.module.name, step.func);
-        let moduleEndpointTemplate = step.module.description.paths[funcPathKey];
+        let funcPathKey = utils.supervisorExecutionPath(x.module.name, x.func);
+        let moduleEndpointTemplate = x.module.description.paths[funcPathKey];
 
         // Build the __SINGLE "MAIN" OPERATION'S__ parameters for the request
         // according to the description.
@@ -330,18 +406,18 @@ function createSolution(deploymentId, sequence, packageBaseUrl) {
         }
 
         // Create the module object if this is the first one.
-        if (!(step.module.name in deploymentsToDevices[deviceIdStr].endpoints)) {
+        if (!(x.module.name in deploymentsToDevices[deviceIdStr].endpoints)) {
             deploymentsToDevices[deviceIdStr]
-                .endpoints[step.module.name] = {};
+                .endpoints[x.module.name] = {};
         }
 
         let endpoint = {
             // TODO: Hardcodedly selecting first(s) from list(s) and
             // "url" field assumed to be template "http://{serverIp}:{port}".
             // Should this instead be provided by the device or smth?
-            url: step.module.description.servers[0].url
-                .replace("{serverIp}", step.device.communication.addresses[0])
-                .replace("{port}", step.device.communication.port),
+            url: x.module.description.servers[0].url
+                .replace("{serverIp}", x.device.communication.addresses[0])
+                .replace("{port}", x.device.communication.port),
             path: funcPathKey.replace("{deployment}", deploymentId),
             method: method,
             request: {
@@ -361,15 +437,15 @@ function createSolution(deploymentId, sequence, packageBaseUrl) {
         }
 
         // Finally add mounts needed for the module's functions.
-        if (!(step.module.name in deploymentsToDevices[deviceIdStr].mounts)) {
-            deploymentsToDevices[deviceIdStr].mounts[step.module.name] = {};
+        if (!(x.module.name in deploymentsToDevices[deviceIdStr].mounts)) {
+            deploymentsToDevices[deviceIdStr].mounts[x.module.name] = {};
         }
 
-        deploymentsToDevices[deviceIdStr].mounts[step.module.name][step.func] =
-            mountsFor(step.module, step.func, endpoint);
+        deploymentsToDevices[deviceIdStr].mounts[x.module.name][x.func] =
+            mountsFor(x.module, x.func, endpoint);
 
         deploymentsToDevices[deviceIdStr]
-            .endpoints[step.module.name][step.func] = endpoint;
+            .endpoints[x.module.name][x.func] = endpoint;
     }
 
     // It does not make sense to have a device without any possible
@@ -382,7 +458,7 @@ function createSolution(deploymentId, sequence, packageBaseUrl) {
 
     // Now that the devices and functions are solved, do another iteration to
     // populate each ones' peers.
-    const namePaths = sequence.reduce(
+    const namePaths = resourcePairings.reduce(
         (acc, x) => {
             if (!acc[x.module.name]) {
                 acc[x.module.name] = [];
@@ -400,43 +476,9 @@ function createSolution(deploymentId, sequence, packageBaseUrl) {
         );
     }
 
-    // According to deployment manifest describing the composed
-    // application-calls, create a structure to represent the expected behaviour
-    // and flow of data between nodes.
-    for (let i = 0; i < sequence.length; i++) {
-        const [device, modulee, func] = Object.values(sequence[i]);
+    applyExecutionModel(manifest, deploymentsToDevices, resourcePairings);
 
-        let deviceIdStr = device._id.toString();
-
-        let forwardFunc = sequence[i + 1]?.func;
-        let forwardDeviceIdStr = sequence[i + 1]?.device._id.toString();
-        let forwardDeployment = deploymentsToDevices[forwardDeviceIdStr];
-
-        let forwardEndpoint;
-        if (forwardFunc === undefined || forwardDeployment === undefined) {
-            forwardEndpoint = null;
-        } else {
-            // The order of endpoints attached to deployment is still the same
-            // as it is based on the execution sequence and endpoints are
-            // guaranteed to contain at least one item.
-            let forwardModuleId = sequence[i + 1]?.module.name;
-            forwardEndpoint = forwardDeployment.endpoints[forwardModuleId][forwardFunc];
-        }
-
-        // This is needed at device to figure out how to interpret WebAssembly
-        // function's result.
-        let sourceEndpoint = deploymentsToDevices[deviceIdStr].endpoints[modulee.name][func];
-
-        let instruction = {
-            from: sourceEndpoint,
-            to: forwardEndpoint,
-        };
-
-        // Attach the created details of deployment to matching device.
-        deploymentsToDevices[deviceIdStr].instructions.add(modulee.name, func, instruction);
-    }
-
-    let sequenceAsIds = Array.from(sequence)
+    let resourcesAsIds = Array.from(resourcePairings)
         .map(x => ({
             device: x.device._id,
             module: x.module._id,
@@ -445,7 +487,7 @@ function createSolution(deploymentId, sequence, packageBaseUrl) {
 
     return {
         fullManifest: deploymentsToDevices,
-        sequence: sequenceAsIds
+        resourcePairings: resourcesAsIds
     };
 }
 
@@ -566,13 +608,12 @@ function peersFor(device, namePaths, nodes) {
  * Based on deployment sequence, confirm the existence (funcs in modules) and
  * availability (devices) of needed resources and select most suitable ones if
  * so chosen.
- * @param {*} sequence List (TODO: Or a graph ?) of calls between devices and
- * functions in order.
- * @returns The same sequence but with intelligently selected combination of
+ * @param {*} resourcePairings Mapping of modules and functions to selected resources i.e. devices.
+ * @returns The same pairings but with intelligently selected combination of
  * resources [[device, module, func]...] as Objects. TODO: Throw errors if fails
  * @throws String error if validation of given sequence fails.
  */
-function fetchAndFindResources(sequence, availableDevices) {
+function fetchAndFindResources(resourcePairings, availableDevices) {
     let selectedModules = [];
     let selectedDevices = [];
 
@@ -587,7 +628,7 @@ function fetchAndFindResources(sequence, availableDevices) {
 
     // Iterate all the items in the request's sequence and fill in the given
     // modules and devices or choose most suitable ones.
-    for (let [device, modulee, funcName] of sequence.map(Object.values)) {
+    for (let [device, modulee, funcName] of resourcePairings.map(Object.values)) {
         // If the module and device are orchestrator-based, return immediately.
         if (modulee.isCoreModule) {
             selectedModules.push(modulee);
@@ -633,26 +674,26 @@ function fetchAndFindResources(sequence, availableDevices) {
     // Check that length of all the different lists matches (i.e., for every
     // item in deployment sequence found exactly one module and device).
     let length =
-        sequence.length === selectedModules.length &&
+        resourcePairings.length === selectedModules.length &&
         selectedModules.length === selectedDevices.length
-        ? sequence.length
+        ? resourcePairings.length
         : 0;
     // Assert.
     if (length === 0) {
-        throw `Error on deployment: mismatch length between deployment (${sequence.length}), modules (${selectedModules.length}) and devices (${selectedDevices.length}) or is zero`;
+        throw `Error on deployment: mismatch length between deployment (${resourcePairings.length}), modules (${selectedModules.length}) and devices (${selectedDevices.length}) or is zero`;
     }
 
     // Now that the devices that will be used have been selected, prepare to
     // update the deployment sequence's devices in database with the ones
     // selected (handles possibly 'null' devices).
-    let updatedSequence = Array.from(sequence);
-    for (let i = 0; i < updatedSequence.length; i++) {
-        updatedSequence[i].device = selectedDevices[i];
-        updatedSequence[i].module = selectedModules[i];
-        updatedSequence[i].func   = sequence[i].func;
+    let updatedResources = Array.from(resourcePairings);
+    for (let i = 0; i < updatedResources.length; i++) {
+        updatedResources[i].device = selectedDevices[i];
+        updatedResources[i].module = selectedModules[i];
+        updatedResources[i].func   = resourcePairings[i].func;
     }
 
-    return updatedSequence;
+    return updatedResources;
 }
 
 /**
@@ -690,6 +731,46 @@ function moduleData(modulee, packageBaseUrl) {
             other: other,
         },
     };
+}
+
+/**
+ * Instead of just document-IDs, fill in their matching objects from database.
+ * @param {*} justIds
+ */
+async function fillWithResourceObjects(justIds, availableDevices, moduleCollection) {
+    let resourcePairings = [];
+
+    for (let x of justIds) {
+        // Find with id _or name_ to allow selecting resources more
+        // human-friendly.
+        if (x.device) {
+            try {
+                // Test ObjecId'ness of the id.
+                const _ = ObjectId(x.device);
+                x.device = availableDevices.find(y => y._id.toString() === x.device);
+            } catch (e) {
+                console.error(`Passed in device-ID '${x.device}' not compatible as ObjectID. Using it as 'name' instead`);
+                x.device = availableDevices.find(y => y.name === x.device);
+            }
+        }
+
+        let filter = {};
+        try {
+            filter._id = ObjectId(x.module)
+        } catch (e) {
+            console.error(`Passed in module-ID '${x.module}' not compatible as ObjectID. Using it as 'name' instead`);
+            filter.name = x.module;
+        }
+
+        // Fetch the modules from remote URL similarly to how Docker fetches
+        // from registry/URL if not found locally.
+        // TODO: Actually use a remote-fetch.
+        x.module = await moduleCollection.findOne(filter);
+
+        resourcePairings.push(x);
+    }
+ 
+    return resourcePairings;
 }
 
 const ORCHESTRATOR_ADVERTISEMENT = {

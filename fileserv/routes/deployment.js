@@ -32,6 +32,9 @@ const validateManifestSequence = (sequence) => {
 
 
 const validateManifestMainScript = (mainScript) => {
+    if (!(typeof mani.resourcePairings === "object"))
+        { throw "manifest must have some resources selected"; }
+
     if (!(typeof mainScript.name === "string"))
         { throw "manifest main script must have a module name"; }
     if (mainScript.procedure && !(typeof mainScript.procedure === "string"))
@@ -45,7 +48,7 @@ const validateManifestMainScript = (mainScript) => {
 const validateManifest = (mani) => {
     if (!(typeof mani.name === "string"))
         { throw "manifest must have a name"; }
-    
+
     // Check manifests "execution model".
     const EXECUTIONMODELS = [
         // Sequence means piping outputs of functions as the next one's input.
@@ -59,7 +62,7 @@ const validateManifest = (mani) => {
             f(mani[s]);
         }
     }
-    if (EXECUTIONMODELS.every(([s, _]) => mani[s]))
+    if (EXECUTIONMODELS.filter(([s, _]) => mani[s]).length > 1)
         { throw "manifest must only have one execution model"; }
 }
 
