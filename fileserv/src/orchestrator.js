@@ -179,6 +179,29 @@ class Orchestrator {
 
         manifest.resourcePairings = await fillWithResourceObjects(manifest.resourcePairings, availableDevices, this.moduleCollection);
 
+        if (manifest.mainScript) {
+            // If function name on a module is missing, it implies that all
+            // functions should be made available. This makes it easier to deal with
+            // the mainScript execution model, as all the different functions the
+            // script might want to use do not need to be enumerated by the user.
+            let funcFilledResourcePairings = [];
+            for (let x of manifest.resourcePairings) {
+                if (!x.func) {
+                    for (let f of x.module.exports) {
+                        // NOTE: Copying references!
+                        funcFilledResourcePairings.push({
+                            device: x.device,
+                            module: x.module,
+                            func: f.name
+                        });
+                    }
+                } else {
+                    funcFilledResourcePairings.push(x);
+                }
+            }
+            manifest.resourcePairings = funcFilledResourcePairings;
+        }
+
         //TODO: Start searching for suitable packages using saved file.
         //startSearch();
 
@@ -291,18 +314,14 @@ class Orchestrator {
 
 
 /**
- * For the sequence execution model, come up with the nth instruction in the execution chain.
- * @param {*} n 
- * @param {*} device Device to place this instruction onto.
- * @param {*} modulee Module that this instruction applies to.
- * @param {*} func Function that this instruction applies to.
+ * For the sequence execution model, come up with the nth forward endpoint of
+ * instruction in the execution chain.
+ * @param {*} n Ordered index of some __source__ endpoint .
  * @param {*} resourcePairings Mapping of resources.
  * @param {*} deployment Set of related deployment nodes.
- * @returns instruction
+ * @returns Next forward endpoint
  */
-function nthInstructionForSequence(n, device, modulee, func, resourcePairings, deployment) {
-    let deviceIdStr = device._id.toString();
-
+function nthInstructionForSequence(n, resourcePairings, deployment) {
     let forwardFunc = resourcePairings[n + 1]?.func;
     let forwardDeviceIdStr = resourcePairings[n + 1]?.device._id.toString();
     let forwardDeployment = deployment[forwardDeviceIdStr];
@@ -317,16 +336,7 @@ function nthInstructionForSequence(n, device, modulee, func, resourcePairings, d
         forwardEndpoint = forwardDeployment.endpoints[forwardModuleId][forwardFunc];
     }
 
-    // This is needed at device to figure out how to interpret WebAssembly
-    // function's result.
-    let sourceEndpoint = deployment[deviceIdStr].endpoints[modulee.name][func];
-
-    let instruction = {
-        from: sourceEndpoint,
-        to: forwardEndpoint,
-    };
-
-    return instruction;
+    return forwardEndpoint;
 }
 
 /**
@@ -338,28 +348,39 @@ function nthInstructionForSequence(n, device, modulee, func, resourcePairings, d
  * @param {*} resourcePairings Mappings of resources.
  */
 function applyExecutionModel(manifest, deployment, resourcePairings) {
+    let forwardInstructionF;
     if (manifest.sequence) {
         // According to deployment manifest describing the sequence of
-        // application-calls, create a structure to represent the expected
-        // behaviour and flow of data between nodes for the supervisors to
-        // understand.
-        for (let i = 0; i < resourcePairings.length; i++) {
-            const [device, modulee, func] = Object.values(resourcePairings[i]);
-            const instruction = nthInstructionForSequence(
-                i,
-                device, modulee, func,
-                resourcePairings, deployment
-            );
-
-            // Attach the created details of deployment to matching device.
-            let deviceIdStr = device._id.toString();
-            deployment[deviceIdStr].instructions.add(modulee.name, func, instruction);
-        }
-    } else if (manifest.mainScript) {
-        // No operations needed, as the control of execution is fully
+        // application-calls, select the next endpoint for supervisor to call after this one.
+        forwardInstructionF = nthInstructionForSequence;
+   } else if (manifest.mainScript) {
+        // No forward operations needed, as the control of execution is fully
         // contained inside the main script in question.
+        forwardInstructionF = () => null;
     } else {
         throw `could not deduce execution model from deployment manifest: '${JSON.stringify(manifest, null, 2)}'`;
+    }
+
+    // Apply the selected instruction method to the devices' endpoints.
+    for (let i = 0; i < resourcePairings.length; i++) {
+        const [device, modulee, func] = Object.values(resourcePairings[i]);
+        const forwardEndpoint = forwardInstructionF(
+            i, resourcePairings, deployment,
+        );
+
+        const deviceIdStr = device._id.toString();
+
+        // This is needed at device regardless of execution model to figure out
+        // how to interpret WebAssembly function's result.
+        const sourceEndpoint = deployment[deviceIdStr].endpoints[modulee.name][func];
+
+        const instruction = {
+            from: sourceEndpoint,
+            to: forwardEndpoint,
+        };
+
+        // Attach the created details of deployment to matching device.
+        deployment[deviceIdStr].instructions.add(modulee.name, func, instruction);
     }
 }
 
@@ -736,6 +757,10 @@ function moduleData(modulee, packageBaseUrl) {
 /**
  * Instead of just document-IDs, fill in their matching objects from database.
  * @param {*} justIds
+ * @param {*} availableDevices List of objects representing available devices.
+ * @param {*} moduleCollection Database collection for querying module objects.
+ * @returns List similar to input `justIds` but with objects instead of just
+ * their IDs.
  */
 async function fillWithResourceObjects(justIds, availableDevices, moduleCollection) {
     let resourcePairings = [];
