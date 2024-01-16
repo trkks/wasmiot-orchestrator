@@ -17,7 +17,8 @@ function setOrchestrator(orch) {
 }
 
 
-const validateManifestSequence = (sequence) => {
+const validateManifestSequence = (mani) => {
+    const sequence = mani.sequence;
     if (!(typeof sequence === "object" && sequence instanceof Array)) {
         throw "manifest's operation sequence must be a list";
     }
@@ -31,14 +32,15 @@ const validateManifestSequence = (sequence) => {
 };
 
 
-const validateManifestMainScript = (mainScript) => {
+const validateManifestMainScript = (mani) => {
     if (!(typeof mani.resourcePairings === "object"))
         { throw "manifest must have some resources selected"; }
 
-    if (!(typeof mainScript.name === "string"))
-        { throw "manifest main script must have a module name"; }
-    if (mainScript.procedure && !(typeof mainScript.procedure === "string"))
-        { throw "manifest main procedure must be a function name"; }
+    const mainScript = mani.mainScript;
+    if (!(typeof mainScript.module === "string"))
+        { throw "manifest must have a name of main module"; }
+    if (!(typeof mainScript.function === "string"))
+        { throw "manifest must have a name of main function"; }
 };
 
 
@@ -59,11 +61,11 @@ const validateManifest = (mani) => {
     ];
     for (const [s, f] of EXECUTIONMODELS) {
         if (mani[s]) {
-            f(mani[s]);
+            f(mani)
         }
     }
-    if (EXECUTIONMODELS.filter(([s, _]) => mani[s]).length > 1)
-        { throw "manifest must only have one execution model"; }
+    if (EXECUTIONMODELS.filter(([s, _]) => mani[s]).length !== 1)
+        { throw "manifest must have one and only one execution model"; }
 }
 
 /**
