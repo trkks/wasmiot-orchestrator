@@ -51,7 +51,7 @@ services:
       - FLASK_APP=compute-box
     volumes:
       - type: bind
-        source: ../example/device1/configs/wasmiot-device-description.json
+        source: ../example/device3/configs/wasmiot-device-description.json
         target: /app/instance/configs/wasmiot-device-description.json
 
 volumes:

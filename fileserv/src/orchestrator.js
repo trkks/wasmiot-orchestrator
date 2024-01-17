@@ -679,7 +679,7 @@ function fetchAndFindResources(resourcePairings, availableDevices) {
         if (device) {
             // Check that the device actually can run module and function.
             if (!deviceSatisfiesModule(device, modulee)) {
-                throw `device '${device.name}' does not satisfy module's requirements`;
+                throw `device '${device.name}' does not satisfy requirements of module '${modulee.name}'`;
             }
         } else {
             // Search for a device that could run the module.
