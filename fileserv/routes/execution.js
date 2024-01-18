@@ -46,11 +46,12 @@ const execute = async (request, response) => {
         }
 
         let execResponse = await orchestrator.schedule(deployment, args);
-        if (!execResponse.ok) {
-            throw JSON.stringify(await execResponse.json());
-        }
 
         let json = await execResponse.json();
+
+        if (!execResponse.ok) {
+            throw json;
+        }
 
         console.log("Execution call returned:", JSON.stringify(json, null, 2));
 
@@ -58,25 +59,16 @@ const execute = async (request, response) => {
         let message;
         let statusCode;
 
-        // TODO: This is just temporary way to check for result. Would be
-        // better that supervisor appropriately responds with error code,
-        // instead of just always 200.
-        if (json.resultUrl && json.status !== "error") {
-            // Check if the result has a URL to follow...
-            try {
-                result = { url: new URL(json.resultUrl) };
-                message = "the result will be available at attached URL";
-                statusCode = 200;
-            } catch (e) {
-                result = json;
-                message = "execution call returned something unexpected or not parseable to a URL";
-                statusCode = 500;
-                console.error(message, result.resultUrl);
-            }
-        } else if (json.error) {
-            result = new utils.Error(json.error);
-            message = "execution call failed";
+        // Check if the result has a URL to follow...
+        try {
+            result = { url: new URL(json.resultUrl) };
+            message = "the result will be available at attached URL";
+            statusCode = 200;
+        } catch (e) {
+            result = json;
+            message = "execution call returned something unexpected or not parseable to a URL";
             statusCode = 500;
+            console.error(message, result.resultUrl);
         }
 
         response
