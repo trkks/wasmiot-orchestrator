@@ -95,6 +95,15 @@ class Instructions {
         // recursion).
         this.modules[moduleName][funcName] = instruction;
     }
+
+    /**
+     * Set a module and function name as the entrypoint to main script.
+     * @param {*} moduleName 
+     */
+    mainScript(moduleName, functionName) {
+        this.main = moduleName;
+        this.start = functionName;
+    }
 }
 
 /**
@@ -228,7 +237,7 @@ class Orchestrator {
     }
 
     async deploy(deployment) {
-        let deploymentSolution = deployment.fullManifest;
+        let deploymentSolution = deployment.solution;
 
         let requests = [];
         for (let [deviceId, manifest] of Object.entries(deploymentSolution)) {
@@ -318,13 +327,13 @@ class Orchestrator {
  * instruction in the execution chain.
  * @param {*} n Ordered index of some __source__ endpoint .
  * @param {*} resourcePairings Mapping of resources.
- * @param {*} deployment Set of related deployment nodes.
+ * @param {*} perDevice Set of related deployment nodes.
  * @returns Next forward endpoint
  */
-function nthInstructionForSequence(n, resourcePairings, deployment) {
+function nthInstructionForSequence(n, resourcePairings, perDevice) {
     let forwardFunc = resourcePairings[n + 1]?.func;
     let forwardDeviceIdStr = resourcePairings[n + 1]?.device._id.toString();
-    let forwardDeployment = deployment[forwardDeviceIdStr];
+    let forwardDeployment = perDevice[forwardDeviceIdStr];
 
     let forwardEndpoint;
     if (forwardFunc === undefined || forwardDeployment === undefined) {
@@ -340,23 +349,48 @@ function nthInstructionForSequence(n, resourcePairings, deployment) {
 }
 
 /**
+ * Add main script to devices that support it.
+ * @param {*} n 
+ * @param {*} resourcePairings 
+ * @param {*} perDevice 
+ * @param {*} manifest 
+ */
+function selectNthAsMain(
+    n,
+    resourcePairings,
+    perDevice,
+    manifest,
+) {
+    const x = resourcePairings[n];
+    const device = x.device._id.toString();
+    const deviceSatisfies = x.module.name === manifest.mainScript.module
+        && x.func === manifest.mainScript.function
+    if (deviceSatisfies) {
+        perDevice[device]
+            .instructions
+            .mainScript(x.module.name, x.func);
+    }
+    // Return nothings as no forward operations needed, when the control of
+    // execution is fully contained inside the main script in question.
+}
+
+/**
  * Based on the execution model of deployment, add needed information into the
  * given deployment.
  * @param {*} manifest Original manifest where the execution model can be deducted from.
- * @param {*} deployment The set of deployment nodes to add
+ * @param {*} deploymentsPerDevice The set of deployment nodes to add
  * information into (NOTE: out-parameter).
  * @param {*} resourcePairings Mappings of resources.
  */
-function applyExecutionModel(manifest, deployment, resourcePairings) {
+function applyExecutionModel(manifest, deploymentsPerDevice, resourcePairings) {
     let forwardInstructionF;
     if (manifest.sequence) {
         // According to deployment manifest describing the sequence of
         // application-calls, select the next endpoint for supervisor to call after this one.
         forwardInstructionF = nthInstructionForSequence;
    } else if (manifest.mainScript) {
-        // No forward operations needed, as the control of execution is fully
-        // contained inside the main script in question.
-        forwardInstructionF = () => null;
+        // Add main script to all devices where it is satisfied.
+        forwardInstructionF = selectNthAsMain;
     } else {
         throw `could not deduce execution model from deployment manifest: '${JSON.stringify(manifest, null, 2)}'`;
     }
@@ -364,15 +398,16 @@ function applyExecutionModel(manifest, deployment, resourcePairings) {
     // Apply the selected instruction method to the devices' endpoints.
     for (let i = 0; i < resourcePairings.length; i++) {
         const [device, modulee, func] = Object.values(resourcePairings[i]);
-        const forwardEndpoint = forwardInstructionF(
-            i, resourcePairings, deployment,
-        );
-
         const deviceIdStr = device._id.toString();
 
         // This is needed at device regardless of execution model to figure out
         // how to interpret WebAssembly function's result.
-        const sourceEndpoint = deployment[deviceIdStr].endpoints[modulee.name][func];
+        const sourceEndpoint = deploymentsPerDevice[deviceIdStr].endpoints[modulee.name][func];
+
+        // Get the forward endpoint if the execution model  requires so.
+        const forwardEndpoint = forwardInstructionF(
+            i, resourcePairings, deploymentsPerDevice, manifest
+        ) || null;
 
         const instruction = {
             from: sourceEndpoint,
@@ -380,7 +415,7 @@ function applyExecutionModel(manifest, deployment, resourcePairings) {
         };
 
         // Attach the created details of deployment to matching device.
-        deployment[deviceIdStr].instructions.add(modulee.name, func, instruction);
+        deploymentsPerDevice[deviceIdStr].instructions.add(modulee.name, func, instruction);
     }
 }
 
@@ -507,7 +542,7 @@ function createSolution(deploymentId, manifest, resourcePairings, packageBaseUrl
         }));
 
     return {
-        fullManifest: deploymentsToDevices,
+        solution: deploymentsToDevices,
         resourcePairings: resourcesAsIds
     };
 }
@@ -665,7 +700,7 @@ function fetchAndFindResources(resourcePairings, availableDevices) {
         if (modulee.exports.find(x => x.name === funcName) !== undefined) {
             selectedModules.push(modulee);
         } else {
-            throw `Failed to find function '${funcName}' from requested module: ${modulee}`;
+            throw `Failed to find function '${funcName}' from requested module: ${JSON.stringify(modulee, null, 2)}`;
         }
 
         function deviceSatisfiesModule(d, m) {

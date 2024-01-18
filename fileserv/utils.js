@@ -116,19 +116,26 @@ function getStartEndpoint(deployment) {
     let startStep;
     if (deployment.sequence)
         { startStep = deployment.resourcePairings[deployment.sequence[0]]; }
-    else if (deployment.mainScript)
-        { startStep = deployment.mainScript; }
+    else if (deployment.mainScript) {
+        // Select the first match that can run the main script.
+        const [device, depl] = Object.entries(deployment.solution)
+            .find(([_, x]) => x.instructions.main);
+
+        const module = depl.modules.find(x => x.name === depl.instructions.main).id;
+        const func = depl.instructions.start;
+        startStep = {device, module, func};
+    }
     else {
         throw "deployment manifest execution model not defined";
     }
 
     let modId = startStep.module;
     let modName = deployment
-        .fullManifest[startStep.device]
+        .solution[startStep.device]
         .modules
         .find(x => x.id.toString() === modId.toString()).name;
     let startEndpoint = deployment
-        .fullManifest[startStep.device]
+        .solution[startStep.device]
         .endpoints[modName][startStep.func];
 
     // Change the string url to an object.

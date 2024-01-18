@@ -485,9 +485,9 @@ async function notifyModuleFileUpdate(moduleId) {
     // Find devices that have the module deployed and the matching deployment manifests.
     let deployments = await (await deploymentCollection.find()).toArray();
     let devicesToUpdatedManifests = {};
-    for (let deployment of deployments.filter(x => x.fullManifest)) {
+    for (let deployment of deployments.filter(x => x.solution)) {
         // Unpack the mapping of device-id to manifest sent to it.
-        let [deviceId, manifest] = Object.entries(deployment.fullManifest)[0];
+        let [deviceId, manifest] = Object.entries(deployment.solution)[0];
 
         if (manifest.modules.some(x => x.id === moduleId.toString())) {
             if (devicesToUpdatedManifests[deviceId] === undefined) {
