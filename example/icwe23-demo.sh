@@ -1,7 +1,12 @@
 # This script demonstrates the whole set and execution of the ICWE23 demo
 # scenario using the orchestrator CLI client (instead of web-GUI).
 #
-# NOTE: This script is supposed to run from project root, NOT e.g. from the example/ dir.
+# NOTE: This script is supposed to run from project root, NOT e.g. from the
+# example/ dir.
+#
+# NOTENOTE: Read the fine source code before you run it! For example this script
+# makes HTTP-requests with curl but no guarantees of possible security
+# implications are made.
 
 if [ $# -lt 1 ]; then
     echo "ARG1: path to a .wasm file of camera required"
@@ -20,6 +25,11 @@ elif [ $# -lt 5 ]; then
     exit 1
 fi
 
+if ! command -v python3; then
+    echo "'python3' is required to run this script"
+    exit 1
+fi
+
 # Define variables for the file paths.
 
 campath=$(readlink -f $1)
@@ -34,10 +44,22 @@ infpathcontainer=/app/modules/inf.wasm
 infdescpathcontainer=/app/modules/inf.json
 infmodelpathcontainer=/app/modules/inf.model
 
+# Printing the message $1, stop and wait for $2 seconds.
+wait_prompt() {
+    for i in $(seq 0 $2);
+    do
+        printf "\r$1... (%2ds)" $(( $2 - $i ))
+        sleep 1
+    done
+    echo ""
+}
+
 set -e
 
+examplecomposepath=example/docker-compose.icwe23-demo.yml
+
 # Start containers to have interaction in the system.
-COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker-compose -f example/docker-compose.icwe23-demo.yml up --build --detach
+COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker-compose -f $examplecomposepath up --build --detach
 
 # Use the client container.
 clientcontainername="wasmiot-orcli"
@@ -59,8 +81,7 @@ dorcli="docker run \
     $clientcontainername"
 
 # Wait a bit before requests in order to give time for orchestrator to start.
-echo "Waiting a bit until orchestrator should have started..."
-sleep 7
+wait_prompt "Waiting a bit until orchestrator should have started" 7
 
 # Remove possibly conflicting resources that are there already.
 echo "---"
@@ -73,8 +94,7 @@ echo "Removal done"
 echo "---"
 
 $dorcli device scan
-echo "Waiting a bit until rescanned devices should have introduced themselves..."
-sleep 3
+wait_prompt "Waiting a bit until rescanned devices should have introduced themselves" 3
 
 
 # Create needed camera and inference modules and describe their interfaces.
@@ -96,7 +116,7 @@ $dorcli deployment deploy icwe23-demo
 # Define cleanup if execution succeeds at first try.
 cleanup() {
     echo "Example has finished. Composing down..."
-    docker-compose -f example/docker-compose.icwe23-demo.yml down
+    docker-compose -f $examplecomposepath down
     echo "Done."
     exit 0
 }
@@ -104,7 +124,60 @@ cleanup() {
 # Execute. This might definitely fail at first, if the modules needs to be
 # compiled at supervisor.
 set +e
-$dorcli execute icwe23-demo && cleanup
+
+# Follow request links attempting to get the result (JSON) of inference.
+getresult() {
+    resulturl=$1
+    echo "Requesting result from:" $resulturl 1>&2
+    echo "---" 1>&2
+
+    response=$($dcurl $resulturl)
+    echo "Responded with:" "$response" 1>&2
+    echo "---" 1>&2
+
+    result=$(echo $response | python3 -c "import sys, json; print(json.dumps(json.load(sys.stdin)['result']))")
+    echo "Value in result field:" $result 1>&2
+    echo "---" 1>&2
+
+    echo $result
+}
+
+# Make an "alias" to request inside Docker in order to (maybe) lessen any
+# accidents.
+dcurl="docker-compose \
+    -f ${examplecomposepath}
+    exec ${servercontainername} \
+    curl"
+
+demo() {
+    orchexecuteoutput=$1
+    echo "---"
+    # Interpret the response JSON of orchestrator (removing whatever npm prints
+    # before it).
+    orchresponse=$(echo $orchexecuteoutput | python3 -c "import sys; x=sys.stdin.read(); print(x[x.index('{'):])") || exit 1
+
+    echo "Execution responded:" $orchresponse
+    echo "---"
+
+    wait_prompt "Waiting some time for camera to be ready" 5
+    camresulturl=$(echo $orchresponse | python3 -c "import sys, json; print(json.load(sys.stdin)['url'])") || exit 1
+
+    # Cam "result" (remove quotes from JSON string).
+    infresulturl=$(getresult $(echo $camresulturl | tr -d '"'))
+
+    wait_prompt "Waiting some time for inference to be ready" 8
+
+    # Inference result.
+    infresult=$(getresult $(echo $infresulturl | tr -d '"'))
+
+    # Check if the result was indeed ready.
+    echo $infresult | python3 -c "import sys, json; x=json.load(sys.stdin); print('Inference result is:', int(x[0])) if int(x[0]) else sys.exit(1)" || return 1
+}
+
+# Make the execution request only once.
+theorchexecuteoutput=$($dorcli execute icwe23-demo)
+echo "Orchestrator responded with:" $theorchexecuteoutput
+demo "$theorchexecuteoutput" && cleanup
 
 echo
 echo "!!!"
@@ -116,15 +189,8 @@ else
     waittime=15
 fi
 
+wait_prompt "Waiting for supervisor to compile wasm" $waittime
 
-# Wait for a while so that the module gets compiled...
-for i in $(seq 0 $waittime);
-do
-    printf "\rWaiting for supervisor to compile wasm... (%2ds)" $(( $waittime - $i ))
-    sleep 1
-done
-
-echo
 echo "Trying to execute again..."
-$dorcli execute icwe23-demo && cleanup || printf "\n!!!\nFailed again. You could try increasing the wait time by passing it as ARG6.\nNOTE that the containers are left unremoved for you to inspect their logs!\n\n"
+demo "$theorchexecuteoutput" && cleanup || printf "\n!!!\nFailed again. You could try increasing the wait time by passing it as ARG6.\nNOTE that the containers are left unremoved for you to inspect their logs!\n\n"
 

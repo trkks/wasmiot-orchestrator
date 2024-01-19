@@ -236,8 +236,8 @@ paths:
       description: Create a new deployment
       requestBody:
         description: |
-          Function type information and files or 'mounts' to attach to the
-          module
+          Information about preferred resource pairings and various files or
+          'mounts' required by modules
         required: true
         content:
           application/json:
@@ -358,7 +358,7 @@ paths:
                 $ref: "#/components/schemas/Error"
         '404':
           description: Deployment not found
-      
+
 
 components:
   schemas:
@@ -407,3 +407,5 @@ components:
       $ref: "./schemas/ModuleDescription.yml"
     PrimitiveType:
       $ref: "./schemas/PrimitiveType.yml"
+    "OrderedResources":
+      $ref: "./schemas/OrderedResources.yml"

@@ -44,78 +44,45 @@ const execute = async (request, response) => {
         } else {
             args.files = [];
         }
+
         let execResponse = await orchestrator.schedule(deployment, args);
+
+        let json = await execResponse.json();
+
         if (!execResponse.ok) {
-            throw JSON.stringify(await execResponse.json());
+            throw json;
         }
-        // Recursively seek the end of the execution chain in order respond with
-        // the end result of all steps in the executed sequence.
-        let tries = 0;
-        let depth = 0;
-        let statusCode = 500;
-        let result = new utils.Error("undefined error");
-        let redirectUrl;
-        while (true) {
-            let json;
-            try {
-                json = await execResponse.json();
-            } catch (e) {
-                result = new utils.Error("parsing result to JSON failed: " + e.errorText);
-                break;
-            }
 
-            // TODO: This is just temporary way to check for result. Would be
-            // better that supervisor responds with error code, not 200.
-            if (json.result && json.status !== "error") {
-                // Check if the result is a URL to follow...
-                try {
-                    redirectUrl = new URL(json.result);
-                    depth += 1;
-                } catch (e) {
-                    // Assume this is the final result.
-                    console.log("Result found!", JSON.stringify(json, null, 2));
-                    result = json.result;
-                    statusCode = 200;
-                    break;
-                }
-            } else if (json.error) {
-                result = new utils.Error(json.error);
-                break;
-            } else if (json.resultUrl) {
-                try {
-                    redirectUrl = new URL(json.resultUrl);
-                } catch (e) {
-                    console.log(`received a bad redirection-URL`, e);
-                }
-                depth += 1;
-            }
+        console.log("Execution call returned:", JSON.stringify(json, null, 2));
 
-            options = { method: "GET" };
+        let result;
+        let message;
+        let statusCode;
 
-            console.log(`(Try ${tries}, depth ${depth}) Fetching result from: ${redirectUrl}`);
-            execResponse = await fetch(redirectUrl, options);
-
-            if (!execResponse.ok) {
-                // Wait for a while, if the URL is not yet available.
-                if (execResponse.status == 404 && depth < 5 && tries < 5) {
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                } else {
-                    result = new utils.Error("fetching result failed: " + execResponse.statusText);
-                    break;
-                }
-            }
-
-            tries += 1;
+        // Check if the result has a URL to follow...
+        try {
+            result = { url: new URL(json.resultUrl) };
+            message = "the result will be available at attached URL";
+            statusCode = 200;
+        } catch (e) {
+            result = json;
+            message = "execution call returned something unexpected or not parseable to a URL";
+            statusCode = 500;
+            console.error(message, result.resultUrl);
         }
 
         response
             .status(statusCode)
-            .json(result);
+            .json({
+                "message": message,
+                ...result
+            });
     } catch (e) {
-        console.error("failure in execution:", e);
+        const err = new utils.Error("scheduling work failed", e);
+        console.error(err);
         response
             .status(500)
-            .json(new utils.Error("scheduling work failed", e));
+            .json(err);
     }
 }
 
