@@ -1,0 +1,8 @@
+[workspace]
+members=[
+    "camera",
+    "snake",
+    "snake_client",
+]
+
+resolver = "2"

@@ -1,0 +1,27 @@
+{
+    "new": {
+        "method": "POST",
+        "output": "integer"
+    },
+    "next_frame_wasm32_wasi": {
+        "method": "GET",
+        "output": "integer",
+        "mounts": [
+            {
+                "name": "serialized-state",
+                "mediaType": "application/octet-stream",
+                "stage": "output"
+            }
+        ]
+    },
+    "set_input": {
+        "method": "POST",
+        "output": "integer",
+        "parameters": [
+            {
+                "name": "param0",
+                "type": "integer"
+            }
+        ]
+    }
+}

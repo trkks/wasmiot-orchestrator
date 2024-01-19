@@ -1,12 +1,6 @@
 pub mod snake_adapter {
     use super::snake;
 
-    #[link(wasm_import_module="javascript")]
-    extern {
-        #[link_name="saveSerializedState"]
-        fn unknown_unknown_save_serialized_state(ptr: *const u8) -> u32;
-    }
-
     impl From<u8> for snake::Input {
         fn from(value: u8) -> Self {
             match value {
@@ -32,7 +26,7 @@ pub mod snake_adapter {
         }
     }
 
-    const OUT_FILE: &str = "serializedSnake.json";
+    const OUT_FILE: &str = "serialized-state";
     const W: usize = 20;
     const H: usize = 10;
     static mut GAME: Option<snake::SnakeGame> = None;
@@ -45,11 +39,6 @@ pub mod snake_adapter {
     #[no_mangle]
     pub unsafe fn set_input(input: u8) {
         GAME.as_mut().unwrap().set_input(input.into()); 
-    }
-
-    #[no_mangle]
-    pub fn next_frame_wasm32_unknown_unknown() -> u32 {
-        next_frame(unknown_unknown_save_serialized_state)
     }
 
     #[no_mangle]
@@ -67,7 +56,7 @@ pub mod snake_adapter {
 
     /// Increment the game-state forward, serialize the state and return 0 if the game is still
     /// successfully running.
-    pub fn next_frame(save_serialized_barbar: unsafe extern fn(*const u8) -> u32) -> u32 {
+    pub fn next_frame(save_serialized: unsafe extern fn(*const u8) -> u32) -> u32 {
         let game_status = unsafe { GAME.as_mut().unwrap().next_frame() };
 
         let lines = unsafe { GAME.as_mut().unwrap().board().chunks(W) };
@@ -99,7 +88,7 @@ pub mod snake_adapter {
         assert_eq!(bytes.len(), W * H + 1);
         
 
-        if 0 < unsafe { save_serialized_barbar(bytes.as_ptr()) }{
+        if 0 < unsafe { save_serialized(bytes.as_ptr()) }{
             return 3;
         }
 
@@ -114,14 +103,30 @@ pub mod snake_adapter {
 mod snake;
 
 mod rand {
-    #[link(wasm_import_module="utils")]
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hasher;
+
+    #[link(wasm_import_module="sys")]
     extern {
-        #[link_name = "randomFloat"]
-        fn extern_random() -> f32;
+        #[link_name = "millis"]
+        fn millis() -> u32;
     }
 
     pub fn random<T>() -> f32 {
-        let a = unsafe { extern_random() };
-        a.clamp(0., 1.)
+        let a: u32 = unsafe { millis() };
+        //
+        // Make some very fake random number because I can't be arsed to figure out how to call
+        // WASI random_get.
+        let mut hasher = DefaultHasher::new();
+        let bytes: [u8; 4] = [
+            (a >> 24) as u8,
+            (a >> 16) as u8,
+            (a >> 8) as u8,
+            a as u8,
+        ];
+        hasher.write(&bytes);
+
+        let b = hasher.finish() as f32;
+        b.clamp(0., 1.)
     }
 }
