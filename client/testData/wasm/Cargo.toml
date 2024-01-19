@@ -2,6 +2,7 @@
 members=[
     "abc",
     "html_list",
+    "time",
 ]
 
 resolver = "2"

@@ -26,9 +26,12 @@ fn handle_error(error: std::io::Error, eenum: MountReadFailed) -> i32 {
 }
 
 /// Into output file, create an HTML list of length `n` at the end of an existing HTML-document
-/// base.
+/// base. The amount `n` of list items is (arbitrarily) limited to 1024 for preventing string
+/// capacity overflow.
 #[no_mangle]
 fn html_list(n: u32) -> i32 {
+    let n = if n <= 1024 { n } else { 1024 };
+
     let mut base = match fs::read_to_string(DEPLOY_FILE_NAME) {
         Ok(x) => x,
         Err(e) => return handle_error(e, MountReadFailed::Deploy),
