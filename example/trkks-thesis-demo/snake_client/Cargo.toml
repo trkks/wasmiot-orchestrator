@@ -1,5 +1,5 @@
 [package]
-name = "get_index_noop"
+name = "snake_client"
 version = "0.1.0"
 edition = "2021"
 

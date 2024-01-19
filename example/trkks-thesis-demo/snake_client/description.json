@@ -1,5 +1,5 @@
 {
-    "get_index_noop": {
+    "index": {
         "method": "GET",
         "mounts": [
             {
@@ -8,18 +8,13 @@
                 "stage": "output"
             },
             {
-                "name": "original-index.html",
+                "name": "deploy-index.html",
                 "mediaType": "text/html",
                 "stage": "deployment"
             },
             {
                 "name": "index.js",
                 "mediaType": "text/javascript",
-                "stage": "deployment"
-            },
-            {
-                "name": "snake.wasm",
-                "mediaType": "application/wasm",
                 "stage": "deployment"
             }
         ]

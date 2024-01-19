@@ -6,16 +6,77 @@ const BOUNDS = [CELLBOUNDS[0] * CELLSIZE[0], CELLBOUNDS[1] * CELLSIZE[1]];
 const WAIT_READY = 0;//3000;
 const GAME_TICK = 150;
 
-// Path where the .wasm containing game logic can be loaded from.
-const GAME_WASM_PATH = "snake.wasm";
+// Path where the .wasm containing game logic can be queried from.
+const SNAKE_GAME_API = {
+    init:  { path: "./modules/snake/new",                    method: "POST" },
+    next:  { path: "./modules/snake/next_frame_wasm32_wasi", method: "GET"  },
+    input: { path: "./modules/snake/set_input",              method: "POST" },
+};
+
+//const CAMERA_API = {
+//    get: { path: "./modules/camera/scaled", method: "GET" },
+//}
 
 // Video that will be sampled for the apple's pattern.
 let video = null;
 
 // The game running
-let wasmInstanceMemory = null;
 let gameLoopInterval = null;
 
+async function updateView(snakeStateUrl) {
+    const buffer = await fetch(snakeStateUrl);
+
+    // TODO: Change hardcode to wasm.exports.new(w, h);
+    const { W, H } = { W: 20, H: 10 };
+    const mem = new Uint8Array(
+        buffer, 0, W * H + 1
+    );
+    const state = mem.slice(0, W * H + 1);
+    // Show the state onscreen. 
+    fillGrid(ctx, -1);
+    for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+            const thing = state[y * W + x];
+            drawAtGrid(ctx, x, y, thing);
+        }
+    }
+    // Set a new image as the apple pattern if the apple-spawn-flag
+    // is set.
+    if (state.at(-1) !== 0) {
+        applePattern = await getApplePattern(ctx, ...CELLSIZE);
+    }
+}
+
+
+/*
+ * Helper that queries for results from supervisor.
+ **/
+async function executeSupervisor(apiCommand) {
+    const args = Array.prototype.slice.call(arguments, 1);
+    const argStrings = args.map((x, i) => `param${i}=${x}`);
+    const queryString = `?${argStrings.join("&")}`
+    const r1 = await fetch(
+        apiCommand.path + queryString,
+        { method: apiCommand.method }
+    );
+    const json1 = await r1.json();
+    const r2 = await fetch(json1.resultUrl);
+    const json2 = await r2.json();
+
+    if (!json2.success) {
+        const message = `API execution error on '${JSON.stringify(apiCommand)}'`;
+        console.error(message, json2);
+        throw message;
+    }
+
+    // TODO: generalize
+    // Only return GET results.
+    if (apiCommand.method === "GET") {
+        console.log("Result:", json2.result);
+        return json2.result;
+    }
+}
+ 
 function initCanvas(canvas) {
     const ctx = canvas.getContext("2d");
     canvas.width = BOUNDS[0];
@@ -57,46 +118,10 @@ async function init(canvas) {
     // Set initial apple pattern.
     applePattern = await getApplePattern(ctx, ...CELLSIZE);
 
-    // Load and start the WebAssembly app importing functionality
-    // of the canvas.
-    const importObject = {
-        javascript: {
-            // NOTE: Passing async function to WebAssembly which makes no
-            // distinction between async and sync callbacks.
-            saveSerializedState: async function(ptr) {
-                // TODO: Change hardcode to wasm.exports.new(w, h);
-                const { W, H } = { W: 20, H: 10 };
-                const mem = new Uint8Array(
-                    wasmInstanceMemory.buffer, ptr, W * H + 1
-                );
-                const state = mem.slice(0, W * H + 1);
-                // Show the state onscreen. 
-                fillGrid(ctx, -1);
-                for (let y = 0; y < H; y++) {
-                    for (let x = 0; x < W; x++) {
-                        const thing = state[y * W + x];
-                        drawAtGrid(ctx, x, y, thing);
-                    }
-                }
-                // Set a new image as the apple pattern if the apple-spawn-flag
-                // is set.
-                if (state.at(-1) !== 0) {
-                    applePattern = await getApplePattern(ctx, ...CELLSIZE);
-                }
-            }
-        },
-        utils: {
-            randomFloat: () => Math.random()
-        }
-    };
+    // Initialize the game at server.
+    await executeSupervisor(SNAKE_GAME_API.init);
 
-    const results = await WebAssembly.instantiateStreaming(
-        fetch(GAME_WASM_PATH), importObject
-    );
-    const wasm = results.instance;
-    wasmInstanceMemory = wasm.exports.memory;
-
-    return { ctx, wasm };
+    return ctx;
 }
 
 /*
@@ -167,11 +192,11 @@ function gameOver(ctx) {
 /*
 * Add __global__ keyboard controls.
 */
-function initKeyDownControl(ctx, wasm) {
+function initKeyDownControl(ctx) {
     document.addEventListener("keydown",
-        function(e) {
+        async function(e) {
             if (e.key === "r") {
-                restartGame(ctx, wasm, false);
+                await restartGame(ctx, false);
                 return;
             }
 
@@ -188,27 +213,29 @@ function initKeyDownControl(ctx, wasm) {
             }
 
             // Game observes this input.
-            wasm.exports.set_input(code);
+            executeSupervisor(SNAKE_GAME_API.input, code);
         }
     );
 }
 
-function restartGame(ctx, wasm, dowait=true) {
+async function restartGame(ctx, dowait=true) {
     // Make sure the earlier instance is ended.
     if (gameLoopInterval) {
         gameOver(ctx);
     }
 
     // Initialize the game.
-    wasm.exports.new();
+    await executeSupervisor(SNAKE_GAME_API.init);
 
     // Wait for some time before starting the game loop so that player
     // can prepare.
     const startLoop = function() {
         // Start game loop.
         gameLoopInterval = setInterval(
-            () => {
-                if (wasm.exports.next_frame_wasm32_unknown_unknown() !== 0) {
+            async () => {
+                const [gameOverCode, files] = await executeSupervisor(SNAKE_GAME_API.next);
+                updateView(files[0]);
+                if (gameOverCode !== 0) {
                     gameOver(ctx);
                 }
             },
@@ -231,12 +258,12 @@ async function initWebcamCapture() {
 
 // Initialize first game.
 window.onload = async () => {
-    const { ctx, wasm } = await init(document.getElementById("canvas"));
+    const ctx = await init(document.getElementById("canvas"));
 
-    initKeyDownControl(ctx, wasm);
+    initKeyDownControl(ctx);
 
     await initWebcamCapture();
 
-    restartGame(ctx, wasm);
+    await restartGame(ctx);
 };
 
