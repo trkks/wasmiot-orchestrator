@@ -1,8 +1,10 @@
 // Hack to make this file work in both Node.js and browser without erroring.
 let runningInBrowser = false;
 let multer = undefined;
+let ObjectId = undefined;
 try {
     multer = require("multer");
+    ObjectId = require("mongodb").ObjectId;
 } catch (e) {
     console.log("Importing with 'require' failed; assuming we're in a browser");
     runningInBrowser = true;
@@ -333,6 +335,25 @@ async function apiCall(url, method, body, headers={"Content-Type": "application/
     return result;
 }
 
+/**
+ * Return a filter for querying a module based on a string value x.
+ * @param {*} x string
+ */
+const moduleFilter = (x) => {
+    let filter = {
+        $or: [
+            { name: x },
+        ]
+    };
+    try {
+        const idFilter = { _id: ObjectId(x) };
+        filter["$or"].push(idFilter);
+    } catch (e) {
+        console.error(`Passed in module-ID '${x}' not compatible as ObjectID. Using it only as 'name' instead`);
+    }
+    return filter;
+};
+
 if (!runningInBrowser) {
     module.exports = {
         supervisorExecutionPath,
@@ -344,5 +365,6 @@ if (!runningInBrowser) {
         getStartEndpoint,
         moduleEndpointDescriptions,
         apiCall,
+        moduleFilter,
     };
 }

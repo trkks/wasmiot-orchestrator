@@ -814,13 +814,7 @@ async function fillWithResourceObjects(justIds, availableDevices, moduleCollecti
             }
         }
 
-        let filter = {};
-        try {
-            filter._id = ObjectId(x.module)
-        } catch (e) {
-            console.error(`Passed in module-ID '${x.module}' not compatible as ObjectID. Using it as 'name' instead`);
-            filter.name = x.module;
-        }
+        let filter = utils.moduleFilter(x.module);
 
         // Fetch the modules from remote URL similarly to how Docker fetches
         // from registry/URL if not found locally.

@@ -1,8 +1,6 @@
 const { readFile } = require("node:fs/promises");
 const express = require("express");
 
-const { ObjectId } = require("mongodb");
-
 const { MODULE_DIR, WASMIOT_INIT_FUNCTION_NAME, EMPTY_WASM_FILEPATH } = require("../constants.js");
 const utils = require("../utils.js");
 
@@ -17,20 +15,6 @@ function setDatabase(db) {
     deviceCollection = db.collection("device");
 }
 
-/**
- * Return a filter for querying a module based on a string value x.
- * @param {*} x string
- */
-const moduleFilter = (x) => {
-    let filter = {};
-    try {
-        filter._id = ObjectId(x);
-    } catch (e) {
-        console.error(`Passed in module-ID '${x}' not compatible as ObjectID. Using it as 'name' instead`);
-        filter.name = x;
-    }
-    return filter;
-};
 
 /**
  * Implements the logic for creating a new module.
@@ -164,7 +148,7 @@ const getModuleBy = async (moduleId) => {
 
     let filter = {};
     if (!getAllModules) {
-        filter = moduleFilter(moduleId);
+        filter = utils.moduleFilter(moduleId);
     }
 
     let matches;
@@ -221,7 +205,7 @@ const getModule = (justDescription) => (async (request, response) => {
  */
 const getModuleFile = async (request, response) => {
     let doc = await moduleCollection.findOne(
-        moduleFilter(request.params.moduleId)
+        utils.moduleFilter(request.params.moduleId)
     );
     let filename = request.params.filename;
     if (doc) {
@@ -431,7 +415,7 @@ const describeModule = async (request, response) => {
  */
 const deleteModule = async (request, response) => {
     let deleteAllModules = request.params.moduleId === undefined;
-    let filter = deleteAllModules ? {} : moduleFilter(request.params.moduleId);
+    let filter = deleteAllModules ? {} : utils.moduleFilter(request.params.moduleId);
     let { deletedCount } = await moduleCollection.deleteMany(filter);
     if (deleteAllModules) {
         response.json({ deletedCount: deletedCount });
@@ -518,7 +502,7 @@ async function notifyModuleFileUpdate(moduleId) {
 * @param {*} fields To add to the matched modules.
 */
 async function updateModule(id, fields) {
-    let { matchedCount } = await moduleCollection.updateMany(moduleFilter(id), { $set: fields }, { upsert: true });
+    let { matchedCount } = await moduleCollection.updateMany(utils.moduleFilter(id), { $set: fields }, { upsert: true });
     if (matchedCount === 0) {
         throw "no module matched the filter";
     }
