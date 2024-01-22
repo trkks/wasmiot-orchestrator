@@ -519,7 +519,7 @@ const fileUpload = utils.fileUpload(MODULE_DIR, "module");
 
 const router = express.Router();
 router.post(
-    "/:moduleId",
+    "/:moduleId?",
     fileUpload,
     // A .wasm binary is required.
     utils.validateFileFormSubmission,
