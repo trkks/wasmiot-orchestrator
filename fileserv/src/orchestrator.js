@@ -804,17 +804,17 @@ async function fillWithResourceObjects(justIds, availableDevices, moduleCollecti
         // Find with id _or name_ to allow selecting resources more
         // human-friendly.
         if (x.device) {
-            try {
-                // Test ObjecId'ness of the id.
-                const _ = ObjectId(x.device);
-                x.device = availableDevices.find(y => y._id.toString() === x.device);
-            } catch (e) {
-                console.error(`Passed in device-ID '${x.device}' not compatible as ObjectID. Using it as 'name' instead`);
-                x.device = availableDevices.find(y => y.name === x.device);
-            }
+            // Do the query manually on the collection to avoid extra
+            // DB-access.
+            const dFilters = utils.nameOrIdFilter(x.device)["$or"];
+            x.device = availableDevices
+                .find(y =>
+                    Object.entries(dFilters)
+                        .some(([fieldName, fieldValue]) =>
+                            y[fieldName] === fieldValue));
         }
 
-        let filter = utils.moduleFilter(x.module);
+        let filter = utils.nameOrIdFilter(x.module);
 
         // Fetch the modules from remote URL similarly to how Docker fetches
         // from registry/URL if not found locally.

@@ -4,7 +4,7 @@
 
 const { chdir } = require('process');
 
-const { MongoClient, ObjectId } = require("mongodb");
+const { MongoClient } = require("mongodb");
 
 const { MONGO_URI, PUBLIC_PORT, PUBLIC_BASE_URI, DEVICE_TYPE } = require("./constants.js");
 const { init: initApp } = require("./src/app");

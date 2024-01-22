@@ -336,10 +336,10 @@ async function apiCall(url, method, body, headers={"Content-Type": "application/
 }
 
 /**
- * Return a filter for querying a module based on a string value x.
- * @param {*} x string
+ * Return a database filter for querying documents based on value x.
+ * @param {string} x Document name or ID.
  */
-const moduleFilter = (x) => {
+const nameOrIdFilter = (x) => {
     let filter = {
         $or: [
             { name: x },
@@ -349,7 +349,7 @@ const moduleFilter = (x) => {
         const idFilter = { _id: ObjectId(x) };
         filter["$or"].push(idFilter);
     } catch (e) {
-        console.error(`Passed in module-ID '${x}' not compatible as ObjectID. Using it only as 'name' instead`);
+        console.error(`Passed in document ID '${x}' not compatible as ObjectID. Creating query with only 'name=${x}' instead`);
     }
     return filter;
 };
@@ -365,6 +365,6 @@ if (!runningInBrowser) {
         getStartEndpoint,
         moduleEndpointDescriptions,
         apiCall,
-        moduleFilter,
+        nameOrIdFilter,
     };
 }

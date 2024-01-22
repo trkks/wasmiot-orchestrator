@@ -148,7 +148,7 @@ const getModuleBy = async (moduleId) => {
 
     let filter = {};
     if (!getAllModules) {
-        filter = utils.moduleFilter(moduleId);
+        filter = utils.nameOrIdFilter(moduleId);
     }
 
     let matches;
@@ -205,7 +205,7 @@ const getModule = (justDescription) => (async (request, response) => {
  */
 const getModuleFile = async (request, response) => {
     let doc = await moduleCollection.findOne(
-        utils.moduleFilter(request.params.moduleId)
+        utils.nameOrIdFilter(request.params.moduleId)
     );
     let filename = request.params.filename;
     if (doc) {
@@ -415,7 +415,7 @@ const describeModule = async (request, response) => {
  */
 const deleteModule = async (request, response) => {
     let deleteAllModules = request.params.moduleId === undefined;
-    let filter = deleteAllModules ? {} : utils.moduleFilter(request.params.moduleId);
+    let filter = deleteAllModules ? {} : utils.nameOrIdFilter(request.params.moduleId);
     let { deletedCount } = await moduleCollection.deleteMany(filter);
     if (deleteAllModules) {
         response.json({ deletedCount: deletedCount });
@@ -502,7 +502,7 @@ async function notifyModuleFileUpdate(moduleId) {
 * @param {*} fields To add to the matched modules.
 */
 async function updateModule(id, fields) {
-    let { matchedCount } = await moduleCollection.updateMany(utils.moduleFilter(id), { $set: fields }, { upsert: true });
+    let { matchedCount } = await moduleCollection.updateMany(utils.nameOrIdFilter(id), { $set: fields }, { upsert: true });
     if (matchedCount === 0) {
         throw "no module matched the filter";
     }
