@@ -15,7 +15,8 @@
          ]
     },
     "now": {
-        "method": "POST"
+        "method": "POST",
+        "output": "integer"
     },
     "seconds": {
         "method": "GET",

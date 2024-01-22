@@ -3,7 +3,7 @@
     <head>
         <script>
             function setTime(time) {
-                const resourceUrl = window.location.pathname + "/modules/timem/" + time;
+                const resourceUrl = "./modules/timem/" + time;
                 const element = document.querySelector("#" + time);
                 fetch(resourceUrl)
                     .then(r1 => r1.json())
@@ -18,7 +18,7 @@
             }
             window.onload = () => {
                 document.querySelector("#refresh-button").addEventListener("click", () => {
-                    fetch(window.location.pathname + "/modules/timem/now").then(_ => {
+                    fetch("./modules/timem/now").then(_ => {
                         setTime("seconds");
                         setTime("minutes");
                         setTime("hours");
