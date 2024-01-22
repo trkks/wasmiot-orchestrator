@@ -17,13 +17,14 @@ function setDatabase(db) {
 
 
 /**
- * Implements the logic for creating a new module.
+ * Implements the logic for creating a new module or updating an existing one
+ * with a binary.
  * @returns Promise about interpreting the .wasm binary and attaching it to
  * created module resource. On success it results to the added module's ID.
  */
-const createNewModule = async (metadata, files) => {
+const createNewModule = async (metadata, files, existingModuleId) => {
     // Create the database entry.
-    let moduleId = (await moduleCollection.insertOne(metadata)).insertedId;
+    let moduleId = existingModuleId || (await moduleCollection.insertOne(metadata)).insertedId;
 
     // Attach the Wasm binary. NOTE: If such a file is not provided, save an
     // empty default implementation.
@@ -37,9 +38,7 @@ const createNewModule = async (metadata, files) => {
             mimetype: "application/wasm",
         };
     await addModuleBinary({_id: moduleId}, mainWasmFile);
-    return moduleId;
-};
-
+    return moduleId; };
 /**
  * Implements the logic for describing an existing module.
  * @param {*} moduleId
@@ -234,11 +233,11 @@ const getModuleFile = async (request, response) => {
 }
 
 /**
- * Parse metadata from a Wasm-binary to database along with its name.
+ * Create (or update) a module based on a .wasm binary.
  */
-const createModule = async (request, response) => {
+const handleModuleBinary = async (request, response) => {
     try {
-        let result = await createNewModule(request.body, request.files);
+        let result = await createNewModule(request.body, request.files, request.params.moduleId);
 
         response
             .status(201)
@@ -520,11 +519,11 @@ const fileUpload = utils.fileUpload(MODULE_DIR, "module");
 
 const router = express.Router();
 router.post(
-    "/",
+    "/:moduleId",
     fileUpload,
     // A .wasm binary is required.
     utils.validateFileFormSubmission,
-    createModule,
+    handleModuleBinary,
 );
 router.post(
     "/:moduleId/upload",
