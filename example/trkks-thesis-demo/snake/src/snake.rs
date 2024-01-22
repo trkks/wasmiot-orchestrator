@@ -1,8 +1,3 @@
-// NOTE: This is bad for using libraries with non-Wasm-supported
-// dependencies.
-use crate::rand;
-
-
 type Board = Vec<GameObject>;
 
 

@@ -72,7 +72,7 @@ pub mod snake_adapter {
         let bytes: Vec<u8> = {
             let mut xs = lines
                 .fold(
-                    Vec::with_capacity(W * H),
+                    Vec::with_capacity(SERIALIZED_SIZE),
                     |mut acc, line| {
                         acc.extend(
                             &line.iter()
@@ -108,32 +108,3 @@ pub mod snake_adapter {
 }
 
 mod snake;
-
-mod rand {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::Hasher;
-
-    #[link(wasm_import_module="sys")]
-    extern {
-        #[link_name = "millis"]
-        fn millis() -> u32;
-    }
-
-    pub fn random<T>() -> f32 {
-        let a: u32 = unsafe { millis() };
-        //
-        // Make some very fake random number because I can't be arsed to figure out how to call
-        // WASI random_get.
-        let mut hasher = DefaultHasher::new();
-        let bytes: [u8; 4] = [
-            (a >> 24) as u8,
-            (a >> 16) as u8,
-            (a >> 8) as u8,
-            a as u8,
-        ];
-        hasher.write(&bytes);
-
-        let b = hasher.finish() as f32;
-        b.clamp(0., 1.)
-    }
-}
