@@ -13,9 +13,9 @@ const SNAKE_GAME_API = {
     input: { path: "./modules/snake/set_input",              method: "POST" },
 };
 
-//const CAMERA_API = {
-//    get: { path: "./modules/camera/scaled", method: "GET" },
-//}
+const CAMERA_API = {
+    get: { path: "./modules/camera/scaled", method: "GET" },
+}
 
 // Flag for running the game in debug mode.
 let debugging = true;
@@ -23,35 +23,39 @@ let debugging = true;
 // Flag for pausing the game.
 let paused = false;
 
-// Video that will be sampled for the apple's pattern.
-let video = null;
+// Flag for game over.
+let gameIsOver = true;
 
 // The game running
 let gameLoopInterval = null;
 
-async function updateView(ctx, snakeStateUrl) {
-    const response = await fetch(snakeStateUrl);
-    const blob = await response.blob();
-    const buffer = await blob.arrayBuffer();
+// Current serialized game state.
+let stateBuffer;
 
-    // TODO: Change hardcode to wasm.exports.new(w, h);
-    const { W, H } = { W: 20, H: 10 };
-    const mem = new Uint8Array(
-        buffer, 0, W * H + 1
-    );
-    const state = mem.slice(0, W * H + 1);
-    // Show the state onscreen. 
-    fillGrid(ctx, -1);
-    for (let y = 0; y < H; y++) {
-        for (let x = 0; x < W; x++) {
-            const thing = state[y * W + x];
-            drawAtGrid(ctx, x, y, thing);
+// The visual for apple pickup.
+let applePattern;
+
+async function updateView(ctx) {
+    if (stateBuffer) {
+        // TODO: Change hardcode to wasm.exports.new(w, h);
+        const { W, H } = { W: 20, H: 10 };
+        const mem = new Uint8Array(
+            stateBuffer, 0, W * H + 1
+        );
+        const state = mem.slice(0, W * H + 1);
+        // Show the state onscreen. 
+        fillGrid(ctx, -1);
+        for (let y = 0; y < H; y++) {
+            for (let x = 0; x < W; x++) {
+                const thing = state[y * W + x];
+                drawAtGrid(ctx, x, y, thing);
+            }
         }
-    }
-    // Set a new image as the apple pattern if the apple-spawn-flag
-    // is set.
-    if (state.at(-1) !== 0) {
-        applePattern = await getApplePattern(ctx, ...CELLSIZE);
+        // Set a new image as the apple pattern if the apple-spawn-flag
+        // is set.
+        if (state.at(-1) !== 0) {
+            applePattern = await getApplePattern(ctx, ...CELLSIZE);
+        }
     }
 
     if (paused) {
@@ -59,6 +63,15 @@ async function updateView(ctx, snakeStateUrl) {
         ctx.font      = "20px mono";
         ctx.textAlign = "left";
         ctx.fillText("PAUSED", 20, 20);
+    }
+
+    if (gameIsOver) {
+        // Show that the game has ended.
+        console.log("Game over.");
+        ctx.fillStyle = "red";
+        ctx.font      = "20px mono";
+        ctx.textAlign = "left";
+        ctx.fillText(`GAME OVER (Press R to restart)`, 20, 20);
     }
 }
 
@@ -104,11 +117,10 @@ function initCanvas(canvas) {
  * Return a pattern for the game's apple object scaled as requested.
  */
 async function getApplePattern(ctx, scaleWidth, scaleHeight) {
-    if (!video) {
-        // Return some default if the video has not initialized yet.
-        return "green";
-    }
-    const imageToScale = video;
+    const [_, files] = await executeSupervisor(CAMERA_API.get, 6, 9);
+    const imageResp = await fetch(files[0]);
+    const imageBlob = await imageResp.blob();
+    const imageToScale = await createImageBitmap(imageBlob);
     // Scale the image.
     const scalingCanvas = document.createElement("canvas");
     // Set the canvas to be the same size as the eventual image in order to
@@ -127,7 +139,8 @@ async function init(canvas) {
     const ctx = initCanvas(canvas);
 
     // Show starting screen.
-    gameOver(ctx);
+    gameOver();
+    updateView(ctx);
 
     // Set initial apple pattern.
     applePattern = await getApplePattern(ctx, ...CELLSIZE);
@@ -187,17 +200,11 @@ function fillGrid(ctx, thing) {
     }
 }
 
-function gameOver(ctx) {
+function gameOver() {
     // Stop the running game.
     clearInterval(gameLoopInterval);
     gameLoopInterval = null;
-
-    // Show that the game has ended.
-    console.log("Game over.");
-    ctx.fillStyle = "red";
-    ctx.font      = "20px mono";
-    ctx.textAlign = "left";
-    ctx.fillText(`GAME OVER (Press R to restart)`, 20, 20);
+    gameIsOver = true;
 }
 
 /*
@@ -247,23 +254,29 @@ function initKeyDownControl(ctx) {
 async function gameUpdate(ctx) {
     console.log("-- tick --");
     const [gameOverCode, files] = await executeSupervisor(SNAKE_GAME_API.next);
-    updateView(ctx, files[0]);
+    const response = await fetch(files[0]);
+    const blob = await response.blob();
+    stateBuffer = await blob.arrayBuffer();
+
     if (gameOverCode !== 0) {
-        gameOver(ctx);
+        gameOver();
     }
 }
 
-function gameLoop(ctx) {
+async function gameLoop(ctx) {
     if (!paused) {
-        gameUpdate(ctx);
+        await gameUpdate(ctx);
     }
+    await updateView(ctx);
 }
 
 async function restartGame(ctx, dowait=true) {
     // Make sure the earlier instance is ended.
     if (gameLoopInterval) {
-        gameOver(ctx);
+        gameOver();
     }
+
+    gameIsOver = false;
 
     // Initialize the game at server.
     await executeSupervisor(SNAKE_GAME_API.init);
@@ -281,20 +294,11 @@ async function restartGame(ctx, dowait=true) {
     }
 }
 
-async function initWebcamCapture() {
-    video = document.createElement("video");
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    video.srcObject = stream;
-    video.play();
-}
-
 // Initialize first game.
 window.onload = async () => {
     const ctx = await init(document.getElementById("canvas"));
 
     initKeyDownControl(ctx);
-
-    await initWebcamCapture();
 
     // User has to start the game by hitting 'r'.
     //await restartGame(ctx);

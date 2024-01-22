@@ -1,0 +1,12 @@
+{
+    "scaled": {
+        "method": "GET",
+        "mounts": [
+            {
+                "name": "image.jpeg",
+                "mediaType": "image/jpeg",
+                "stage": "output"
+            }
+        ]
+    }
+}
