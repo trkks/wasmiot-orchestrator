@@ -88,7 +88,7 @@ impl SnakeGame {
 
         if self.snake[0].x == self.apple.x && self.snake[0].y == self.apple.y {
             collided_go = GameObject::Apple;
-            self.snake.push(self.snake[self.snake.len()-1]);
+            self.snake.push(*self.snake.last().unwrap());
             self.apple.x = (rand::random::<f32>() * self.board_size.x as f32) as i32;
             self.apple.y = (rand::random::<f32>() * self.board_size.y as f32) as i32;
         }

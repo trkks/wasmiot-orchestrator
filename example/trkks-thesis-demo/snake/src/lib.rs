@@ -30,6 +30,7 @@ pub mod snake_adapter {
     const W: usize = 20;
     const H: usize = 10;
     static mut GAME: Option<snake::SnakeGame> = None;
+    const SERIALIZED_SIZE: usize = H * W + 1;
 
     #[no_mangle]
     pub fn new() {
@@ -38,13 +39,15 @@ pub mod snake_adapter {
 
     #[no_mangle]
     pub unsafe fn set_input(input: u8) {
-        GAME.as_mut().unwrap().set_input(input.into()); 
+        if GAME.is_some() {
+            GAME.as_mut().unwrap().set_input(input.into()); 
+        }
     }
 
     #[no_mangle]
     pub fn next_frame_wasm32_wasi() -> u32 {
         unsafe extern fn f(ptr: *const u8) -> u32 {
-            let x = unsafe { std::slice::from_raw_parts(ptr, W * H) };
+            let x = unsafe { std::slice::from_raw_parts(ptr, SERIALIZED_SIZE) };
             if std::fs::write(OUT_FILE, x).is_ok() {
                 0
             } else {
@@ -57,6 +60,10 @@ pub mod snake_adapter {
     /// Increment the game-state forward, serialize the state and return 0 if the game is still
     /// successfully running.
     pub fn next_frame(save_serialized: unsafe extern fn(*const u8) -> u32) -> u32 {
+        if unsafe { GAME.is_none() } {
+            return 4;
+        }
+
         let game_status = unsafe { GAME.as_mut().unwrap().next_frame() };
 
         let lines = unsafe { GAME.as_mut().unwrap().board().chunks(W) };
@@ -85,7 +92,7 @@ pub mod snake_adapter {
             xs
         };
 
-        assert_eq!(bytes.len(), W * H + 1);
+        assert_eq!(bytes.len(), SERIALIZED_SIZE);
         
 
         if 0 < unsafe { save_serialized(bytes.as_ptr()) }{

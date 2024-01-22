@@ -17,14 +17,19 @@ const SNAKE_GAME_API = {
 //    get: { path: "./modules/camera/scaled", method: "GET" },
 //}
 
+// Flag for running the game in debug mode.
+let debugging = true;
+
 // Video that will be sampled for the apple's pattern.
 let video = null;
 
 // The game running
 let gameLoopInterval = null;
 
-async function updateView(snakeStateUrl) {
-    const buffer = await fetch(snakeStateUrl);
+async function updateView(ctx, snakeStateUrl) {
+    const response = await fetch(snakeStateUrl);
+    const blob = await response.blob();
+    const buffer = await blob.arrayBuffer();
 
     // TODO: Change hardcode to wasm.exports.new(w, h);
     const { W, H } = { W: 20, H: 10 };
@@ -118,9 +123,6 @@ async function init(canvas) {
     // Set initial apple pattern.
     applePattern = await getApplePattern(ctx, ...CELLSIZE);
 
-    // Initialize the game at server.
-    await executeSupervisor(SNAKE_GAME_API.init);
-
     return ctx;
 }
 
@@ -196,13 +198,19 @@ function initKeyDownControl(ctx) {
     document.addEventListener("keydown",
         async function(e) {
             if (e.key === "r") {
-                await restartGame(ctx, false);
+                await restartGame(ctx, false, debugging);
                 return;
             }
 
-            if (!gameLoopInterval) {
+            if (!debugging && !gameLoopInterval) {
                 return;
             }
+
+            // Allow manually "ticking" the game forward for debugging.
+            if (e.key === "j") {
+                await gameUpdate(ctx);
+                return;
+            } 
             
             let code = 4;
             switch (e.key) {
@@ -218,34 +226,39 @@ function initKeyDownControl(ctx) {
     );
 }
 
-async function restartGame(ctx, dowait=true) {
+/*
+ * Update the game one step forward.
+ **/
+async function gameUpdate(ctx) {
+    console.log("-- tick --");
+    const [gameOverCode, files] = await executeSupervisor(SNAKE_GAME_API.next);
+    updateView(ctx, files[0]);
+    if (gameOverCode !== 0) {
+        gameOver(ctx);
+    }
+}
+
+async function restartGame(ctx, dowait=true, manualTick=false) {
     // Make sure the earlier instance is ended.
     if (gameLoopInterval) {
         gameOver(ctx);
     }
 
-    // Initialize the game.
+    // Initialize the game at server.
     await executeSupervisor(SNAKE_GAME_API.init);
 
-    // Wait for some time before starting the game loop so that player
-    // can prepare.
-    const startLoop = function() {
-        // Start game loop.
-        gameLoopInterval = setInterval(
-            async () => {
-                const [gameOverCode, files] = await executeSupervisor(SNAKE_GAME_API.next);
-                updateView(files[0]);
-                if (gameOverCode !== 0) {
-                    gameOver(ctx);
-                }
-            },
-            GAME_TICK
-        );
-    };
-    if (dowait) {
-        setTimeout(startLoop, WAIT_READY);
-    } else {
-        startLoop();
+    if (!manualTick) {
+        // Wait for some time before starting the game loop so that player
+        // can prepare.
+        const startLoop = function() {
+            // Start game loop.
+            gameLoopInterval = setInterval(() => gameUpdate(ctx), GAME_TICK);
+        };
+        if (dowait) {
+            setTimeout(startLoop, WAIT_READY);
+        } else {
+            startLoop();
+        }
     }
 }
 
@@ -264,6 +277,7 @@ window.onload = async () => {
 
     await initWebcamCapture();
 
-    await restartGame(ctx);
+    // User has to start the game by hitting 'r'.
+    //await restartGame(ctx);
 };
 
