@@ -4,7 +4,7 @@ const CELLSIZE = [64, 64];
 const BOUNDS = [CELLBOUNDS[0] * CELLSIZE[0], CELLBOUNDS[1] * CELLSIZE[1]];
 // Constants for game timing.
 const WAIT_READY = 0;//3000;
-const GAME_TICK = 150;
+const GAME_TICK = 750;
 
 // Path where the .wasm containing game logic can be queried from.
 const SNAKE_GAME_API = {
@@ -19,6 +19,9 @@ const SNAKE_GAME_API = {
 
 // Flag for running the game in debug mode.
 let debugging = true;
+
+// Flag for pausing the game.
+let paused = false;
 
 // Video that will be sampled for the apple's pattern.
 let video = null;
@@ -49,6 +52,13 @@ async function updateView(ctx, snakeStateUrl) {
     // is set.
     if (state.at(-1) !== 0) {
         applePattern = await getApplePattern(ctx, ...CELLSIZE);
+    }
+
+    if (paused) {
+        ctx.fillStyle = "white";
+        ctx.font      = "20px mono";
+        ctx.textAlign = "left";
+        ctx.fillText("PAUSED", 20, 20);
     }
 }
 
@@ -116,9 +126,8 @@ async function getApplePattern(ctx, scaleWidth, scaleHeight) {
 async function init(canvas) {
     const ctx = initCanvas(canvas);
 
-    // Do some example drawing.
-    ctx.fillStyle = "green";
-    ctx.fillRect(10, 10, 150, 100);
+    // Show starting screen.
+    gameOver(ctx);
 
     // Set initial apple pattern.
     applePattern = await getApplePattern(ctx, ...CELLSIZE);
@@ -185,7 +194,7 @@ function gameOver(ctx) {
 
     // Show that the game has ended.
     console.log("Game over.");
-    ctx.fillStyle = "white";
+    ctx.fillStyle = "red";
     ctx.font      = "20px mono";
     ctx.textAlign = "left";
     ctx.fillText(`GAME OVER (Press R to restart)`, 20, 20);
@@ -197,31 +206,37 @@ function gameOver(ctx) {
 function initKeyDownControl(ctx) {
     document.addEventListener("keydown",
         async function(e) {
-            if (e.key === "r") {
-                await restartGame(ctx, false, debugging);
-                return;
-            }
-
-            if (!debugging && !gameLoopInterval) {
-                return;
-            }
-
-            // Allow manually "ticking" the game forward for debugging.
-            if (e.key === "j") {
-                await gameUpdate(ctx);
-                return;
-            } 
-            
-            let code = 4;
+            let code = null;
+            // Control the running game.
             switch (e.key) {
                 case "ArrowUp"   : code = 0; break;
                 case "ArrowDown" : code = 1; break;
                 case "ArrowLeft" : code = 2; break;
                 case "ArrowRight": code = 3; break;
             }
+            if (code !== null) {
+                // Game observes this input.
+                executeSupervisor(SNAKE_GAME_API.input, code);
+                return;
+            }
 
-            // Game observes this input.
-            executeSupervisor(SNAKE_GAME_API.input, code);
+            // Control the application.
+            switch (e.key) {
+                case "d":
+                    debugging = !debugging;
+                    break;
+                case "j":
+                    // Allow manually "ticking" the game forward.
+                    await gameUpdate(ctx);
+                    break;
+                case "p":
+                    paused = !paused;
+                    break;
+                case "r":
+                    await restartGame(ctx, false);
+                    break;
+            }
+
         }
     );
 }
@@ -238,7 +253,13 @@ async function gameUpdate(ctx) {
     }
 }
 
-async function restartGame(ctx, dowait=true, manualTick=false) {
+function gameLoop(ctx) {
+    if (!paused) {
+        gameUpdate(ctx);
+    }
+}
+
+async function restartGame(ctx, dowait=true) {
     // Make sure the earlier instance is ended.
     if (gameLoopInterval) {
         gameOver(ctx);
@@ -247,18 +268,16 @@ async function restartGame(ctx, dowait=true, manualTick=false) {
     // Initialize the game at server.
     await executeSupervisor(SNAKE_GAME_API.init);
 
-    if (!manualTick) {
-        // Wait for some time before starting the game loop so that player
-        // can prepare.
-        const startLoop = function() {
-            // Start game loop.
-            gameLoopInterval = setInterval(() => gameUpdate(ctx), GAME_TICK);
-        };
-        if (dowait) {
-            setTimeout(startLoop, WAIT_READY);
-        } else {
-            startLoop();
-        }
+    // Wait for some time before starting the game loop so that player
+    // can prepare.
+    const startLoop = function() {
+        // Start game loop.
+        gameLoopInterval = setInterval(() => gameLoop(ctx), GAME_TICK);
+    };
+    if (dowait) {
+        setTimeout(startLoop, WAIT_READY);
+    } else {
+        startLoop();
     }
 }
 
