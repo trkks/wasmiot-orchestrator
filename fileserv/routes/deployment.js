@@ -174,13 +174,7 @@ const tryDeploy = async (deploymentDoc, response) => {
  *  deployment.
  */
 const deploy = async (request, response) => {
-    let filter = {};
-    try {
-        filter._id = ObjectId(request.params.deploymentId);
-    } catch (e) {
-        console.error(`Passed in deployment-ID '${request.params.deploymentId}' not compatible as ObjectID. Using it as 'name' instead`);
-        filter.name = request.params.deploymentId;
-    }
+    let filter = utils.nameOrIdFilter(request.params.deploymentId)
 
     let deploymentDoc = await deploymentCollection.findOne(filter);
     if (!deploymentDoc) {
