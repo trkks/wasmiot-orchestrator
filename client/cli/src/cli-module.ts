@@ -31,6 +31,26 @@ program
         console.log(JSON.stringify(result, null, 4));
     });
 
+
+program
+    .command("update")
+    .description("Update the binary of a module")
+    .argument("<module-id-string>", "ID of the module")
+    .argument("<input-file>", "Path to a new .wasm file")
+    .action(async (id, wasmPath) => {
+        const result = await client.default.postFileModule1(
+            id,
+            {
+                wasm: new Blob(
+                    [await readFile(wasmPath)],
+                    { type: "application/wasm" }
+                )
+            }
+        );
+        console.log(JSON.stringify(result, null, 4));
+    });
+
+
 program
     .command("desc")
     .description(`Describe an existing module
@@ -72,9 +92,16 @@ program
 
 program
     .command("rm")
-    .description("Remove all modules")
-    .action(async () => {
-        const result = await client.default.deleteFileModule();
+    .description("Remove modules")
+    .argument("[module-id-string]", "ID of the module to remove")
+    .action(async (id) => {
+        let result;
+        if (id) {
+            await client.default.deleteFileModule1(id);
+            result = id;
+        } else {
+            result = await client.default.deleteFileModule();
+        }
 
         console.log(JSON.stringify(result, null, 4));
     })
