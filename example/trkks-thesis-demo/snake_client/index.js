@@ -17,6 +17,10 @@ const CAMERA_API = {
     get: { path: "./modules/camera/scaled", method: "GET" },
 }
 
+const MIGRATION_API = {
+    camera: { path: "./migrate/camera", method: "POST" },
+}
+
 // Flag for running the game in debug mode.
 let debugging = true;
 
@@ -78,6 +82,9 @@ async function updateView(ctx) {
 
 /*
  * Helper that queries for results from supervisor.
+ *
+ * Include your arguments to (WebAssembly) function execution after the
+ * apiCommand parameter.
  **/
 async function executeSupervisor(apiCommand) {
     const args = Array.prototype.slice.call(arguments, 1);
@@ -88,20 +95,28 @@ async function executeSupervisor(apiCommand) {
         { method: apiCommand.method }
     );
     const json1 = await r1.json();
-    const r2 = await fetch(json1.resultUrl);
-    const json2 = await r2.json();
 
-    if (!json2.success) {
-        const message = `API execution error on '${JSON.stringify(apiCommand)}'`;
-        console.error(message, json2);
-        throw message;
+    if (!r1.ok) {
+        console.error(r1);
+        throw `request '${apiCommand}' failed`;
     }
 
-    // TODO: generalize
-    // Only return GET results.
-    if (apiCommand.method === "GET") {
-        console.log("Result:", json2.result);
-        return json2.result;
+    if (json1.resultUrl) {
+        const r2 = await fetch(json1.resultUrl);
+        const json2 = await r2.json();
+
+        if (!json2.success) {
+            const message = `API execution error on '${JSON.stringify(apiCommand)}'`;
+            console.error(message, json2);
+            throw message;
+        }
+
+        // TODO: generalize
+        // Only return GET results.
+        if (apiCommand.method === "GET") {
+            console.log("Result:", json2.result);
+            return json2.result;
+        }
     }
 }
  
@@ -235,6 +250,10 @@ function initKeyDownControl(ctx) {
                 case "j":
                     // Allow manually "ticking" the game forward.
                     await gameUpdate(ctx);
+                    break;
+                case "m":
+                    // Allow changing the camera source.
+                    executeSupervisor(MIGRATION_API.camera);
                     break;
                 case "p":
                     paused = !paused;
