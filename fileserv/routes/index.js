@@ -7,6 +7,7 @@ const device = require("./device");
 const modules = require("./module");
 const deployment = require("./deployment");
 const execution = require("./execution");
+const migration = require("./migration");
 const { init: initCoreServices } = require("./coreServices");
 
 
@@ -23,6 +24,9 @@ async function init(routeDependencies) {
     execution.setDatabase(routeDependencies.database);
     execution.setOrchestrator(routeDependencies.orchestrator);
 
+    migration.setDatabase(routeDependencies.database);
+    migration.setOrchestrator(routeDependencies.orchestrator);
+
     let coreServicesRouter = await initCoreServices(routeDependencies);
 
     return {
@@ -30,6 +34,7 @@ async function init(routeDependencies) {
         modules: modules.router,
         deployment: deployment.router,
         execution: execution.router,
+        migration: migration.router,
         coreServicesRouter,
     };
 }
