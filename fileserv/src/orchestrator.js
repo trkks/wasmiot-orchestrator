@@ -111,7 +111,8 @@ class Instructions {
  * deployment.
  */
 class DeploymentNode {
-    constructor(deploymentId) {
+    constructor(deploymentId, orchestratorApiBaseUrl) {
+        this.orchestratorApiBase = orchestratorApiBaseUrl;
         // Used to separate similar requests between deployments at
         // supervisor.
         this.deploymentId = deploymentId;
@@ -148,13 +149,15 @@ class Orchestrator {
         this.deploymentCollection = database.collection("deployment");
 
         this.packageManagerBaseUrl = options.packageManagerBaseUrl || constants.PUBLIC_BASE_URI;
+        this.orchestratorApiBaseUrl = options.orchestratorApiBaseUrl || constants.PUBLIC_BASE_URI;
+
         if (!options.deviceMessagingFunction) {
             throw new utils.Error("method for communicating to devices not given");
         }
         this.messageDevice = options.deviceMessagingFunction;
     }
 
-    async solve(manifest, resolving=false) {
+    async solve(manifest, { availableDevices, resolving }={ resolving: false }) {
         // Handle the case when sequence is used, thus the resource pairings can
         // be deducted from it instead of having to include them excplicitly in
         // the manifest(request).
@@ -183,8 +186,10 @@ class Orchestrator {
             }
         }
 
-        // Fetch ALL devices here in order to pass them on if needed preventing repeated DB-queries.
-        const availableDevices = await (await this.deviceCollection.find()).toArray();
+        // If a certain set of devices is not supplied, fetch ALL devices from DB.
+        if (!availableDevices) {
+            availableDevices = await (await this.deviceCollection.find()).toArray();
+        }
 
         manifest.resourcePairings = await fillWithResourceObjects(manifest.resourcePairings, availableDevices, this.moduleCollection);
 
@@ -220,12 +225,24 @@ class Orchestrator {
         // construct the instructions on devices.
         let deploymentId;
         if (resolving) {
+            // The manifest given even if resolving might differ from original,
+            // so update it in database.
+            await this.deploymentCollection.updateOne(
+                { _id: manifest._id },
+                { $set: manifest }
+            );
             deploymentId = manifest._id;
         } else {
             deploymentId = (await this.deploymentCollection.insertOne(manifest)).insertedId;
         }
 
-        let solution = createSolution(deploymentId, manifest,assignedResources, this.packageManagerBaseUrl)
+        let solution = createSolution(
+            deploymentId,
+            manifest,
+            assignedResources,
+            this.packageManagerBaseUrl,
+            this.orchestratorApiBaseUrl,
+        )
 
         // Update the deployment with the created solution.
         this.deploymentCollection.updateOne(
@@ -318,6 +335,95 @@ class Orchestrator {
 
         // Message the first device and return its reaction response.
         return fetch(url, options);
+    }
+
+    /**
+     * Given a deployment with module and source device identifiers change an active deployment to move module out of sourceDevice.
+     * @param {*} deployment Deployment document.
+     * @param {*} migratingModule Identifier of the module to move.
+     * @param {*} sourceDevice Identifier of the device to move module off of.
+     */
+    async migrate(deployment, migratingModule, sourceDevice) {
+        // 1. Change the deployment manifest and document so that module is moved
+        // from its current device to __another__ suitable device.
+
+        /**
+         * Set the device in resource pairings to be solved automatically when predicate
+         * applies to the pairing.
+         * @param {*} predicate Function returning true if the device should be
+         * automatically solved.
+         * @param {*} resourcePairings Resource pairings to iterate, searching
+         * for device/match.
+         * @returns New resource pairings with the predicate and change applied.
+         */
+        function autoSolveDeviceWhen(predicate, resourcePairings) {
+            return resourcePairings.map((x) => {
+                let y;
+                if (predicate(x)) {
+                    // Set that this time the device should be
+                    // automatically chosen.
+                    y = { device: null, module: x.module, func: x.func };
+                } else {
+                    y = x;
+                }
+                // HACKY: Map the resource pairings into just IDs, because
+                // that's what solve() expects.
+                return {
+                    device: y.device?.toString(),
+                    module: y.module.toString(),
+                    func: y.func,
+                };
+            });
+        }
+
+        const changePredicate = ({device: d, module: m }) => d === sourceDevice && m === migratingModule;
+
+        // Select between execution models.
+        let newManifest;
+        if (deployment.mainScript) {
+            newManifest = {
+                mainScript: deployment.mainScript,
+                resourcePairings: autoSolveDeviceWhen(
+                    changePredicate, deployment.resourcePairings
+                ),
+            };
+        } else if (deployment.sequence) {
+            newManifest = {
+                sequence: autoSolveDeviceWhen(changePredicate, deployment.sequence),
+            };
+        } else {
+            throw "unknown execution model in deployment";
+        }
+
+        // Fetch all devices and add a predicate that filters out the
+        // combination of the source device and migrating module.
+        // TODO: Might be nicer to just pass the predicate function into solve()?
+        const availableDevices = await (await
+        this.deviceCollection.find()).toArray();
+        for (let device of availableDevices) {
+            if (device._id.toString() === sourceDevice) {
+                device.deploymentPredicate = (m) => m._id.toString() !== migratingModule;
+            }
+        }
+
+        // Run the solving algorithm again with the constrained set of devices.
+        // NOTE that other parts than just the migrating device-module -pairing
+        // might change!
+        newManifest._id = deployment._id;
+        const newSolution = await this.solve(
+            newManifest, { availableDevices, resolving: true }
+        );
+
+        // 2. Deploy the module to the target device.
+        // 3. Send updated instructions to device peers.
+        const newDeployment = await this.deploymentCollection
+            .findOne({ _id: deployment._id});
+
+        // Does not need to be sync.
+        this.deploy(newDeployment);
+
+        // 4. Remove module from the device it has now migrated out of.
+        //TODO
     }
 }
 
@@ -427,7 +533,7 @@ function applyExecutionModel(manifest, deploymentsPerDevice, resourcePairings) {
  * @returns The created solution.
  * @throws An error if building the solution fails.
  */
-function createSolution(deploymentId, manifest, resourcePairings, packageBaseUrl) {
+function createSolution(deploymentId, manifest, resourcePairings, packageBaseUrl, orchestratorApiBaseUrl) {
     let deploymentsToDevices = {};
     for (let x of resourcePairings) {
         let deviceIdStr = x.device._id.toString();
@@ -435,7 +541,7 @@ function createSolution(deploymentId, manifest, resourcePairings, packageBaseUrl
         // __Prepare__ to make a mapping of devices and their instructions in order to
         // bulk-send the instructions to each device when deploying.
         if (!(deviceIdStr in deploymentsToDevices)) {
-            deploymentsToDevices[deviceIdStr] = new DeploymentNode(deploymentId);
+            deploymentsToDevices[deviceIdStr] = new DeploymentNode(deploymentId, orchestratorApiBaseUrl);
         }
 
         // Add module needed on device.
@@ -651,7 +757,7 @@ function peersFor(device, namePaths, nodes) {
                 if (nodes[peer].endpoints[moduleName]
                     && nodes[peer].endpoints[moduleName][funcName]) {
                     const peerEndpoint = nodes[peer].endpoints[moduleName][funcName];
-                    const peerUrl = `${peerEndpoint.url}/${peerEndpoint.path}`
+                    const peerUrl = `${peerEndpoint.url}${peerEndpoint.path}`
                     obj[moduleName][funcName].push(peerUrl)
                 }
             }
@@ -704,7 +810,11 @@ function fetchAndFindResources(resourcePairings, availableDevices) {
         }
 
         function deviceSatisfiesModule(d, m) {
-            return m.requirements.every(
+            // This condition placed on device prevents unwanted combinations of
+            // device and module e.g., when re-solving during migration.
+            const allowedToSelect = d.deploymentPredicate ? d.deploymentPredicate(m) : true;
+
+            return allowedToSelect && m.requirements.every(
                 r => d.description.supervisorInterfaces.find(
                     interfacee => interfacee === r.name // i.kind === r.kind && i.module === r.module
                 )
@@ -826,6 +936,7 @@ async function fillWithResourceObjects(justIds, availableDevices, moduleCollecti
  
     return resourcePairings;
 }
+
 
 const ORCHESTRATOR_ADVERTISEMENT = {
     name: "orchestrator",

@@ -218,7 +218,7 @@ const updateDeployment = async (request, response) => {
     try {
         let newDeployment = request.body;
         newDeployment._id = oldDeployment._id;
-        updatedDeployment = await orchestrator.solve(newDeployment, true);
+        updatedDeployment = await orchestrator.solve(newDeployment, {resolving: true});
     } catch (err) {
         errorMsg = "Failed updating manifest for deployment" + err;
 

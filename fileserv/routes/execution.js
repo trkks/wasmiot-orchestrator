@@ -5,13 +5,13 @@ const { EXECUTION_INPUT_DIR } = require("../constants.js");
 const utils = require("../utils.js");
 
 
-let deploymentCollection = null
+let deploymentCollection = null;
 
 function setDatabase(db) {
     deploymentCollection = db.collection("deployment");
 }
 
-let orchestrator = null
+let orchestrator = null;
 
 function setOrchestrator(orch) {
     orchestrator = orch;
