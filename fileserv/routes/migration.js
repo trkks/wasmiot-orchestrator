@@ -28,27 +28,39 @@ function setOrchestrator(orch) {
 const migrate = async (request, response) => {
     const deployment = await deploymentCollection
         .findOne(utils.nameOrIdFilter(request.params.deploymentId));
-    const sourceDevice = await deviceCollection
-        .findOne(utils.nameOrIdFilter(request.body.from));
     const migratingModule = await
         moduleCollection
             .findOne(utils.nameOrIdFilter(request.params.moduleId));
+    const migratingModuleId = migratingModule._id.toString();
 
-    if (!deployment || !sourceDevice || !migratingModule) {
+    // If the source device is not given, the given module is assumed to be on
+    // one device only and the module on that device is selected for migration.
+    let sourceDeviceId;
+    if (request.body.from) {
+        sourceDeviceId = (await deviceCollection
+            .findOne(utils.nameOrIdFilter(request.body.from)))
+            ._id.toString();
+    } else {
+        sourceDeviceId = Object.values(deployment.resourcePairings)
+            .find(x => x.module.toString() === migratingModuleId)
+            .device;
+    }
+
+    if (!deployment || !sourceDeviceId || !migratingModuleId) {
         response.status(404).send();
         return;
     }
 
     try {
         // TODO: Allow specifying the target.
-        await orchestrator.migrate(deployment, migratingModule._id.toString(), sourceDevice._id.toString());
+        await orchestrator.migrate(deployment, migratingModuleId, sourceDeviceId);
         response
             .status(204)
             .send();
     } catch (e) {
-        const err = new utils.Error(`migration deployment-${deployment.name}:module-${migratingModule.name} => device-${sourceDevice.name} failed`, e);
+        const err = new utils.Error(`migration deployment-${deployment.name}:module-${migratingModule.name} => device-${sourceDeviceId.name} failed`, e);
         console.error(err);
-        console.error(e.stack);
+        console.error(e.stack || "no error stack");
         response
             .status(500)
             .json(err);
