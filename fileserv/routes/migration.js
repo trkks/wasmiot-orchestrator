@@ -43,7 +43,7 @@ const migrate = async (request, response) => {
     } else {
         sourceDeviceId = Object.values(deployment.resourcePairings)
             .find(x => x.module.toString() === migratingModuleId)
-            .device;
+            .device.toString();
     }
 
     if (!deployment || !sourceDeviceId || !migratingModuleId) {
