@@ -376,7 +376,7 @@ class Orchestrator {
             });
         }
 
-        const changePredicate = ({device: d, module: m }) => d === sourceDevice && m === migratingModule;
+        const changePredicate = ({device: d, module: m }) => d.toString() === sourceDevice && m.toString() === migratingModule;
 
         // Select between execution models.
         let newManifest;
@@ -917,11 +917,19 @@ async function fillWithResourceObjects(justIds, availableDevices, moduleCollecti
             // Do the query manually on the collection to avoid extra
             // DB-access.
             const dFilters = utils.nameOrIdFilter(x.device)["$or"];
-            x.device = availableDevices
+            const deviceMatch = availableDevices
                 .find(y =>
-                    Object.entries(dFilters)
-                        .some(([fieldName, fieldValue]) =>
-                            y[fieldName] === fieldValue));
+                    Object.values(dFilters)
+                        .some(z => Object.entries(z)
+                            .some(([filterKey, filterValue]) =>
+                            // NOTE: Kinda hacky but switch up the comparison when ObjectIDs.
+                            filterValue instanceof ObjectId
+                                ? y[filterKey].equals(filterValue)
+                                : y[filterKey] === filterValue)));
+            if (!deviceMatch) {
+                throw `device '${x.device}' is not available`;
+            }
+            x.device = deviceMatch;
         }
 
         let filter = utils.nameOrIdFilter(x.module);
