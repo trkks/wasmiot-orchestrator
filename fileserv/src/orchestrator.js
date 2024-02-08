@@ -938,6 +938,9 @@ async function fillWithResourceObjects(justIds, availableDevices, moduleCollecti
         // from registry/URL if not found locally.
         // TODO: Actually use a remote-fetch.
         x.module = await moduleCollection.findOne(filter);
+        if (x.module === null) {
+            throw `module not found using filter '${JSON.stringify(filter)}'`;
+        }
 
         resourcePairings.push(x);
     }

@@ -8,17 +8,17 @@ const GAME_TICK = 750;
 
 // Path where the .wasm containing game logic can be queried from.
 const SNAKE_GAME_API = {
-    init:  { path: "./modules/snake/new",                    method: "POST" },
-    next:  { path: "./modules/snake/next_frame_wasm32_wasi", method: "GET"  },
-    input: { path: "./modules/snake/set_input",              method: "POST" },
+    init:  { path: "modules/snake/new",                    method: "POST" },
+    next:  { path: "modules/snake/next_frame_wasm32_wasi", action: "stream" },
+    input: { path: "modules/snake/set_input",              method: "POST" },
 };
 
 const CAMERA_API = {
-    get: { path: "./modules/camera/scaled", method: "GET" },
+    get: { path: "modules/camera/scaled", method: "GET" },
 }
 
 const MIGRATION_API = {
-    camera: { path: "./migrate/camera", method: "POST" },
+    camera: { path: "camera", action: "migrate" },
 }
 
 // Flag for running the game in debug mode.
@@ -90,10 +90,23 @@ async function executeSupervisor(apiCommand) {
     const args = Array.prototype.slice.call(arguments, 1);
     const argStrings = args.map((x, i) => `param${i}=${x}`);
     const queryString = `?${argStrings.join("&")}`
+
+    let method = "GET";
+    let actionPrefix = "";
+    switch (apiCommand.action) {
+        case "migrate": 
+            method = "POST";
+            actionPrefix = "migrate/";
+            break;
+        case "stream": 
+            throw "when streaming data, implement specially made handlers instead";
+    }
+
     const r1 = await fetch(
-        apiCommand.path + queryString,
-        { method: apiCommand.method }
+        "./" + actionPrefix + apiCommand.path + queryString,
+        { method }
     );
+
     const json1 = await r1.json();
 
     if (!r1.ok) {
@@ -272,10 +285,23 @@ function initKeyDownControl(ctx) {
  **/
 async function gameUpdate(ctx) {
     console.log("-- tick --");
-    const [gameOverCode, files] = await executeSupervisor(SNAKE_GAME_API.next);
-    const response = await fetch(files[0]);
-    const blob = await response.blob();
-    stateBuffer = await blob.arrayBuffer();
+    const response = await fetch(SNAKE_GAME_API.next.action + "/" + SNAKE_GAME_API.next.path);
+    let chunks = [];
+    for await (const chunk of response.body) {
+        console.log("STREAM:", chunk);
+        chunks.push(chunk);
+    }
+    console.log("Game state stream has ended with:", chunks);
+    let buffer = new Uint8Array(chunks.reduce((acc, x) => acc + x.length, 0));
+    let start = 0;
+    for (const chunk of chunks) {
+        buffer.set(chunk, start);
+        start += chunk.length;
+    }
+    console.log("Buffer built is:", buffer);
+
+    const gameOverCode = buffer[0];
+    stateBuffer = buffer.slice(1);
 
     if (gameOverCode !== 0) {
         gameOver();
