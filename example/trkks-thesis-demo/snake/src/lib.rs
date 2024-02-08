@@ -1,37 +1,51 @@
+pub mod snake;
+
+impl From<u8> for snake::Input {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => Self::Up,
+            1 => Self::Down,
+            2 => Self::Left,
+            3 => Self::Right,
+            4.. => Self::Undefined,
+        }
+    }
+}
+
+impl From<snake::GameObject> for u8 {
+    fn from(go: snake::GameObject) -> Self {
+        match go {
+            snake::GameObject::Apple   => 0,
+            snake::GameObject::Body    => 1,
+            snake::GameObject::Floor   => 2,
+            snake::GameObject::Head    => 3,
+            snake::GameObject::Overlap => 4,
+        }
+    }
+}
+
+impl From<u8> for snake::GameObject {
+    fn from(n: u8) -> Self {
+        match n {
+            0 => snake::GameObject::Apple,
+            1 => snake::GameObject::Body,
+            2 => snake::GameObject::Floor,
+            3 => snake::GameObject::Head,
+            4 => snake::GameObject::Overlap,
+            _ => panic!("unknown game object {}", n),
+        }
+    }
+}
+
 pub mod snake_adapter {
     use super::snake;
 
-    impl From<u8> for snake::Input {
-        fn from(value: u8) -> Self {
-            match value {
-                0 => Self::Up,
-                1 => Self::Down,
-                2 => Self::Left,
-                3 => Self::Right,
-                4.. => Self::Undefined,
-            }
-        }
-    }
 
-    impl From<super::snake::GameObject> for u8 {
-        fn from(go: super::snake::GameObject) -> Self {
-            match go {
-                
-               super::snake::GameObject::Apple   => 0,
-               super::snake::GameObject::Body    => 1,
-               super::snake::GameObject::Floor   => 2,
-               super::snake::GameObject::Head    => 3,
-               super::snake::GameObject::Overlap => 4,
-            }
-        }
-    }
-
-    const OUT_FILE: &str = "serialized-state";
+    pub const OUT_FILE: &str = "serialized-state";
     const W: usize = 20;
     const H: usize = 10;
     static mut GAME: Option<snake::SnakeGame> = None;
     const SERIALIZED_SIZE: usize = H * W + 1;
-
     #[no_mangle]
     pub fn new() {
         unsafe { GAME = Some(snake::SnakeGame::new(W, H)); }
@@ -76,7 +90,7 @@ pub mod snake_adapter {
                     |mut acc, line| {
                         acc.extend(
                             &line.iter()
-                                .map(|x| <snake::GameObject as Into<u8>>::into(x.clone()))
+                                .map(|x| x.clone().into())
                                 .collect::<Vec<u8>>()
                         );
                         acc
@@ -106,5 +120,3 @@ pub mod snake_adapter {
         return 0;
     }
 }
-
-mod snake;

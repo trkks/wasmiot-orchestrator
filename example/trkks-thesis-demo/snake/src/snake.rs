@@ -131,7 +131,7 @@ pub enum Input {
     Right,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum GameObject {
     Apple,
     Body,
