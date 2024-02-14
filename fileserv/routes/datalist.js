@@ -156,7 +156,6 @@ const FUNCTION_DESCRIPTIONS = {
     delete: {
         parameters: [],
         method: "DELETE",
-        output: "application/octet-stream",
         mounts: [
             {
                 name: "id",
@@ -182,8 +181,10 @@ FUNCTION_DESCRIPTIONS[WASMIOT_INIT_FUNCTION_NAME] = {
         }
     ],
     // This field is special for init-functions.
-    init: initData
+    init: initData,
 };
+
+
 
 const MODULE_NAME = "Datalist";
 
@@ -191,5 +192,6 @@ const MODULE_NAME = "Datalist";
 module.exports = {
     MODULE_NAME,
     FUNCTION_DESCRIPTIONS,
-    setDatabase
+    setDatabase,
+    EXPORTS: Object.entries(FUNCTION_DESCRIPTIONS).map(([n, x]) => ({name: n, parameterCount: x.parameters.length})),
 };
