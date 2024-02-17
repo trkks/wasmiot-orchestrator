@@ -1,55 +1,15 @@
 use std::io;
 
-use image::io as iio;
+use image::{Pixel, io as iio};
 
-use snake::{snake_adapter, snake::GameObject};
+use snake::{snake_adapter::{OUT_FILE, W, H, SERIALIZED_SIZE}, snake::GameObject};
+use camera::IMG_SIZE;
 
 
-/// Declare remote procedure calls hardcoded for this application to use.
-#[allow(dead_code, unused_doc_comments)]
-#[link(wasm_import_module="rpc")]
-extern {
-    /// Writes a JPEG image into the memory location.
-    #[link_name="camera_capture"]
-    fn jpeg_(start: *mut u8, size_ptr: *const u32);
+mod rpc_utils;
 
-    /// Writes bytes into the memory location.
-    #[link_name="next_game_frame"]
-    fn octet_stream_(start: *mut u8, size_ptr: *const u32);
-}
+use rpc_utils::do_rpc;
 
-fn save_data(
-    data_size: usize,
-    f: unsafe extern fn(*mut u8, *const u32),
-) -> Vec<u8> {
-    let mut buffer = vec![0; data_size];
-    let buffer_ptr = buffer.as_mut_ptr();
-    let size_copy = data_size;
-    let size_ptr = core::ptr::addr_of!(size_copy) as *const u32;
-    unsafe {
-        f(buffer_ptr, size_ptr);
-    }
-    buffer
-}
-
-fn jpeg() -> image::ImageResult<image::DynamicImage> {
-    let jpeg_bytes = save_data(3 * 640 * 480, jpeg_);
-    iio::Reader::with_format(
-            io::Cursor::new(jpeg_bytes),
-            image::ImageFormat::Jpeg,
-        )
-        .decode()
-}
-
-fn local_file() -> image::ImageResult<image::DynamicImage> {
-//    let jpeg_bytes = std::fs::read("fakeWebcam.jpeg").unwrap();
-//    iio::Reader::with_format(
-//            io::Cursor::new(jpeg_bytes),
-//            image::ImageFormat::Jpeg,
-//        )
-//        .decode()
-    image::open("fakeWebcam.jpeg")
-}
 
 #[no_mangle]
 pub fn index() -> i32 {
@@ -60,9 +20,10 @@ pub fn index() -> i32 {
     }
 }
 
-const N: usize = 64;
+pub const N: usize = 64;
+
 /// Return the RGB-pixels of square s*s representing game object o.
-pub fn render(o: GameObject) -> Vec<u8> {
+pub fn render(o: GameObject, scaled_jpeg_bytes: &[u8]) -> Vec<u8> {
     let fill_color = |r,g,b| {
         let mut xs = Vec::with_capacity(3 * N * N);
         let mut i = 0;
@@ -73,11 +34,24 @@ pub fn render(o: GameObject) -> Vec<u8> {
         xs
     };
     match o {
-        GameObject::Apple => image::imageops::resize(
-                &local_file().unwrap().into_rgb8(),
-                N as u32, N as u32,
-                image::imageops::FilterType::Nearest,
-            ).into_vec(),
+        GameObject::Apple => {
+            // Put the pixel RGB-values into a grid.
+            let img = iio::Reader::with_format(
+                    io::Cursor::new(scaled_jpeg_bytes),
+                    image::ImageFormat::Jpeg,
+                )
+                .decode()
+                .expect("failed decoding JPEG image of RPC result");
+
+            let img_grid = img.into_rgb8()
+                .pixels()
+                .map(|p| p.to_rgb().0)
+                .flatten()
+                .collect::<Vec<u8>>();
+            assert_eq!(img_grid.len(), N * N * 3);
+
+            img_grid
+       },
         GameObject::Body    => fill_color(0x77, 0x77, 0x77),
         GameObject::Floor   => fill_color(0xff, 0xff, 0xff),
         GameObject::Head    => fill_color(0x22, 0x22, 0x22),
@@ -85,25 +59,48 @@ pub fn render(o: GameObject) -> Vec<u8> {
     }
 }
 
-const W: usize = 20;
-const H: usize = 10;
 const VN: usize = N * 3;
 const VW: usize = W * VN;
 const VIEW_SIZE: usize = (H * N) * VW;
+
+/// Using RPCs, generate and save the next game frame.
 #[no_mangle]
 pub fn next_frame() -> i32 {
-    // Create game TODO not in final.
-    snake_adapter::new();
-    let status = snake_adapter::next_frame_wasm32_wasi();
-    if status != 0 { println!("failed {}", status); return 1; }
+    // FIXME: The second RPC-call (which ever it is) traps with out of bounds memory access.
+    let state = {
+        let Ok(game_state) = do_rpc(
+            "snake", "next_frame_wasm32_wasi",
+            None, SERIALIZED_SIZE
+        ) else { return 1; };
 
-    let game_state = std::fs::read(snake_adapter::OUT_FILE).unwrap();
+        game_state
+    };
 
+    let img = {
+        // Pack the input args width and height to a buffer.
+        let nbytes_args = std::iter::repeat(N.to_le_bytes())
+            .take(2)
+            .flatten()
+            .collect();
+
+        // TODO: An RPC every render-call might be too much...
+        let Ok(scaled_jpeg_bytes) = do_rpc(
+            "camera", "scaled",
+            Some(nbytes_args), 2048 // Should be enough for this sized JPEG.
+        ) else { return 2; };
+
+        scaled_jpeg_bytes
+    };
+
+    _next_frame(&state, &img)
+}
+
+pub fn _next_frame(game_state: &[u8], food_image: &[u8]) -> i32 {
     // Render the game state including the apple image into the view.
     let mut blocks = Vec::with_capacity(W * H);
     for object_code in game_state.iter().take(W * H) {
         let go = (*object_code).into();
-        let block = render(go);
+        let block = render(go, food_image);
         assert_eq!(block.len(), N * VN);
         blocks.push(block);
     }
@@ -134,7 +131,7 @@ pub fn next_frame() -> i32 {
         (W * N) as u32, (H * N) as u32,
         view.to_vec(),
     ).expect("bad img")
-        .save("outimga.jpeg")
+        .save(format!("{}.jpeg", OUT_FILE))
         .expect("cant save");
-    1
+    0
 }

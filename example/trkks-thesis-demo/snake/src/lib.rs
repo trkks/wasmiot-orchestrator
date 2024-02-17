@@ -42,10 +42,10 @@ pub mod snake_adapter {
 
 
     pub const OUT_FILE: &str = "serialized-state";
-    const W: usize = 20;
-    const H: usize = 10;
+    pub const W: usize = 20;
+    pub const H: usize = 10;
     static mut GAME: Option<snake::SnakeGame> = None;
-    const SERIALIZED_SIZE: usize = H * W + 1;
+    pub const SERIALIZED_SIZE: usize = H * W + 1;
     #[no_mangle]
     pub fn new() {
         unsafe { GAME = Some(snake::SnakeGame::new(W, H)); }
@@ -109,7 +109,7 @@ pub mod snake_adapter {
         assert_eq!(bytes.len(), SERIALIZED_SIZE);
         
 
-        if 0 < unsafe { save_serialized(bytes.as_ptr()) }{
+        if 0 < unsafe { save_serialized(bytes.as_ptr()) } {
             return 3;
         }
 

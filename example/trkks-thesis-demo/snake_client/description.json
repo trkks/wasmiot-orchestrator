@@ -18,5 +18,15 @@
                 "stage": "deployment"
             }
         ]
+    },
+    "next_frame": {
+        "method": "GET",
+        "mounts": [
+            {
+                "name": "serialized_state",
+                "mediaType": "image/jpeg",
+                "stage": "output"
+            }
+        ]
     }
 }

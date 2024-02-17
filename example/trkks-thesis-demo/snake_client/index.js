@@ -6,7 +6,7 @@ const GAME_TICK = 750;
 /* Paths where the .wasm containing game logic can be queried from */
 const SNAKE_GAME_API = {
     init:  {                   path: "modules/snake/new",                    method: "POST" },
-    next:  { action: "stream", path: "modules/snake/next_frame_wasm32_wasi"                 },
+    next:  { action: "stream", path: "modules/snake_client/next_frame",                     },
     input: {                   path: "modules/snake/set_input",              method: "POST" },
 };
 
@@ -69,7 +69,7 @@ async function executeSupervisor(apiCommand) {
 }
 
 /* Flag that shows if game is paused */
-let paused = false;
+let paused = true;
 
 /* Flag that shows if game is over */
 let gameIsOver = true;
@@ -232,5 +232,7 @@ function initKeyDownControl(ctx) {
 window.onload = async () => {
     const ctx = await init(document.getElementById("canvas"));
     initKeyDownControl(ctx);
+    // Start game as paused.
+    paused = true;
 };
 
