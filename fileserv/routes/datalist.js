@@ -24,6 +24,8 @@ const fileUpload = utils.fileUpload("./files/exec/core/datalist");
 const initData = async () => {
     let { insertedId } = await collection.insertOne({ history: [] });
     let docId = insertedId.toString();
+    // TODO: Save the ID per deployment instead of this one global collection
+    // for everyone.
     await writeFile("./files/exec/core/datalist/id", docId, encoding="utf-8");
 };
 
@@ -72,6 +74,9 @@ const pushData = async (request, response) => {
     let entry = nonPrimitiveEntry
         ? await readFile(nonPrimitiveEntry.path, encoding="utf-8")
         : request.query.param0;
+    // TODO: Based on received media type, parse the entry accordingly (e.g.,
+    // integer, float, string, boolean ...).
+    entry = Number(entry);
     await collection.updateOne({ _id: ObjectId(id) }, { $push: { history: entry } });
 
     // TODO: Notify subscribers about the new entry.
@@ -110,7 +115,7 @@ const deleteData = async (request, response) => {
 
 const FUNCTION_DESCRIPTIONS = {
     /**
-     * Save the 'entry' to the document identified by 'id' and then forward
+     * Save the 'entry' to the document identified by 'id' and then TODO forward
      * the 'entry' to registered listeners.
      */
     push: {
@@ -118,7 +123,7 @@ const FUNCTION_DESCRIPTIONS = {
         // out.
         parameters: [{ name: "param0", type: "integer" }],
         method: "PUT",
-        output: "integer", // Which index the entry was stored at.
+        output: "application/json", // Link to the matching GET path.
         mounts: [
             {
                 name: "id",
