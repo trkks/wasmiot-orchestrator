@@ -1,6 +1,16 @@
 {
     "scaled": {
         "method": "GET",
+        "parameters": [
+            {
+                "name": "width",
+                "type": "integer"
+            },
+            {
+                "name": "height",
+                "type": "integer"
+            }
+        ],
         "mounts": [
             {
                 "name": "image.jpeg",
