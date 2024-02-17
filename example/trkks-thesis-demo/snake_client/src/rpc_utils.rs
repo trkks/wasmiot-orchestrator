@@ -55,6 +55,8 @@ pub fn do_rpc(
     let (i_ptr, i_len, i_cap) = mut_ptrs_of(in_and_out_buffer);
 
     let rpc_status = unsafe { rpc(m_ptr, m_len, f_ptr, f_len, i_ptr, i_len) };
+    // TODO The name-pointers should probably be dropped manually?
+
     if rpc_status != 0 {
         return Err(rpc_status);
     }

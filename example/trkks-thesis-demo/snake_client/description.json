@@ -23,7 +23,7 @@
         "method": "GET",
         "mounts": [
             {
-                "name": "serialized_state",
+                "name": "snake_game.jpeg",
                 "mediaType": "image/jpeg",
                 "stage": "output"
             }

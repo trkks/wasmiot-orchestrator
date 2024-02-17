@@ -106,7 +106,7 @@ pub fn _next_frame(game_state: &[u8], food_image: &[u8]) -> i32 {
     }
 
     // Position the elements' squares into a grid.
-    let mut view = [255; VIEW_SIZE];
+    let mut view = Box::new([255; VIEW_SIZE]);
     
     for yi in 0..H {
         for xi in 0..W {
@@ -131,7 +131,7 @@ pub fn _next_frame(game_state: &[u8], food_image: &[u8]) -> i32 {
         (W * N) as u32, (H * N) as u32,
         view.to_vec(),
     ).expect("bad img")
-        .save(format!("{}.jpeg", OUT_FILE))
+        .save("snake_game.jpeg")
         .expect("cant save");
     0
 }
