@@ -3,6 +3,7 @@ members=[
     "abc",
     "html_list",
     "time",
+    "datalist_counter",
 ]
 
 resolver = "2"

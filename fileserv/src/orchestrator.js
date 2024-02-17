@@ -125,7 +125,7 @@ class DeploymentNode {
         this.instructions = new Instructions();
         // Mounts needed for the module's functions.
         this.mounts = {};
-        // Base URLs for peers of a node; basically all other nodes in
+        // Endpoints of peers of a node; basically all other nodes in
         // deployment are in here somewhere.
         this.peers = {};
     }
@@ -551,6 +551,11 @@ function createSolution(deploymentId, manifest, resourcePairings, packageBaseUrl
         // Add needed endpoint to call function in said module on the device.
         let funcPathKey = utils.supervisorExecutionPath(x.module.name, x.func);
         let moduleEndpointTemplate = x.module.description.paths[funcPathKey];
+        if (moduleEndpointTemplate === undefined) {
+            // Skip any exports that have not been listed in module's
+            // description.
+            continue;
+        }
 
         // Build the __SINGLE "MAIN" OPERATION'S__ parameters for the request
         // according to the description.
@@ -711,7 +716,7 @@ function mountsFor(modulee, func, endpoint) {
                 modulee.mounts[func]
             ).find(([_, mount]) => mount.stage === MountStage.OUTPUT);
         if (!outputMount) {
-            throw `output mount of '${response.media_type}' expected but is missing`;
+            throw `output mount of type '${response.media_type}' expected on function '${modulee.name}/${func}' but is missing`;
         }
         let path = outputMount[0];
         response_files = [new MountPathFile(path, response.media_type, MountStage.OUTPUT)]
@@ -736,7 +741,7 @@ function mountsFor(modulee, func, endpoint) {
 }
 
 /**
- * Create a mapping to lists of peer-device execution URLs excluding the
+ * Create a mapping to lists of peer-device endpoints excluding the
  * `device` itself.
  * @param {*} device Device to not include.
  * @param {{ moduleName: funcName }} namePaths Deployment's functions by modules 
@@ -757,8 +762,7 @@ function peersFor(device, namePaths, nodes) {
                 if (nodes[peer].endpoints[moduleName]
                     && nodes[peer].endpoints[moduleName][funcName]) {
                     const peerEndpoint = nodes[peer].endpoints[moduleName][funcName];
-                    const peerUrl = `${peerEndpoint.url}${peerEndpoint.path}`
-                    obj[moduleName][funcName].push(peerUrl)
+                    obj[moduleName][funcName].push(peerEndpoint)
                 }
             }
         }

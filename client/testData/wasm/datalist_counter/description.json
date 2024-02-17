@@ -1,0 +1,6 @@
+{
+    "counter": {
+        "method": "GET",
+        "output": "integer"
+    }
+}
