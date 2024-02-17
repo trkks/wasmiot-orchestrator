@@ -87,25 +87,23 @@ fn update_value(read_res: Result<Vec<u8>, u32>) -> u32 {
     }
 }
 
-fn handle_push(push_res: Result<Vec<u8>, u32>) -> Option<i32> {
-    if let Ok(x_bytes) = push_res {
-        parse_last_value(x_bytes).map(|x| x as i32)
-    } else {
-        None
-    }
+fn value_to_text(x: u32) -> Vec<u8> {
+    x.to_string().into_bytes()
 }
 
-/// Fetch, update and store a _positive_ integer value in database, that is accessed with remote
-/// procedure calls.
+/// Increment a _positive_ integer value by fetching, updating and storing it in database,
+/// which is accessed with remote procedure calls. Also return the updated value bounded by
+/// _signed_ integer or negative value if the update failed.
 #[no_mangle]
 pub fn counter() -> i32 {
     let value_read_result = do_rpc("core:Datalist", "get", None, 1024);
     let updated_value = update_value(value_read_result);
-    let value_update_result = do_rpc("core:Datalist", "push", Some(updated_value.to_le_bytes().to_vec()), 1024);
-    if handle_push(value_update_result).is_none() {
-        -1
+    let value_entry = value_to_text(updated_value);
+    let value_update_result = do_rpc("core:Datalist", "push", Some(value_entry), 1024);
+    if value_update_result.is_ok() {
+        updated_value.try_into().unwrap_or(i32::MAX)
     } else {
-        0
+        -1
     }
 }
 
@@ -164,5 +162,12 @@ mod tests {
     #[should_panic]
     fn test_update_value_err() {
         update_value(Err(2));
+    }
+
+    #[test]
+    fn test_value_to_text() {
+        assert_eq!(value_to_text(0), b"0");
+        assert_eq!(value_to_text(10), b"10");
+        assert_eq!(value_to_text(100), b"100");
     }
 }
