@@ -87,7 +87,7 @@ function gameOver() {
 async function updateView(ctx, imgBlob) {
     if (imgBlob) {
         const bitmap = await createImageBitmap(imgBlob);
-        ctx.drawImage(bitmap, 0, 0, 200, 200);
+        ctx.drawImage(bitmap, 0, 0, 64 * 20, 64 * 10);
     }
 
     if (paused) {
@@ -140,8 +140,8 @@ async function updateGame(ctx) {
 
 async function init(canvas) {
     const ctx = canvas.getContext("2d");
-    canvas.width = 256;
-    canvas.height = 256;
+    canvas.width  = 64 * 20;
+    canvas.height = 64 * 10;
 
     // Show starting screen.
     gameOver();
@@ -150,8 +150,8 @@ async function init(canvas) {
     return ctx;
 }
 
+var imgBlob;
 async function gameLoop(ctx) {
-    let imgBlob;
     if (!paused) {
         try {
             imgBlob = await updateGame(ctx);
@@ -211,7 +211,7 @@ function initKeyDownControl(ctx) {
             switch (e.key) {
                 case "j":
                     // Allow manually "ticking" the game forward.
-                    await updateGame(ctx);
+                    imgBlob = await updateGame(ctx);
                     break;
                 case "m":
                     // Allow changing the camera source.

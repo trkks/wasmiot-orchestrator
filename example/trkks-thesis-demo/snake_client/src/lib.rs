@@ -66,7 +66,6 @@ const VIEW_SIZE: usize = (H * N) * VW;
 /// Using RPCs, generate and save the next game frame.
 #[no_mangle]
 pub fn next_frame() -> i32 {
-    // FIXME: The second RPC-call (which ever it is) traps with out of bounds memory access.
     let state = {
         let Ok(game_state) = do_rpc(
             "snake", "next_frame_wasm32_wasi",
@@ -86,7 +85,7 @@ pub fn next_frame() -> i32 {
         // TODO: An RPC every render-call might be too much...
         let Ok(scaled_jpeg_bytes) = do_rpc(
             "camera", "scaled",
-            Some(nbytes_args), 2048 // Should be enough for this sized JPEG.
+            Some(nbytes_args), 4096 // Should be enough for this sized JPEG.
         ) else { return 2; };
 
         scaled_jpeg_bytes
