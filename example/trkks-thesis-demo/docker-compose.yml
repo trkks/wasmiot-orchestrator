@@ -1,0 +1,36 @@
+version: '3.4'
+
+services:
+  device-base:
+    profiles:
+      - ABSTRACT_BASE_HACK_DO_NOT_USE
+    build:
+      context: ../../wasmiot-supervisor
+ 
+  alternate-camera:
+    extends: device-base
+    profiles:
+      - device
+    environment:
+      - DEVICE_TYPE=camera-thingi
+      - FLASK_APP=alternate-camera-thingi
+    ports:
+      - 3002:5000
+    volumes:
+      - ../device1/configs:/app/instance/configs
+      - ../device1/modules:/app/instance/modules
+      - ../device1/output:/app/instance/output
+      # For testing on a single host with only one webcam attached, mount some
+      # fake webcam image for the device to use instead. 
+      - type: bind
+        source: ./fakeWebcam.jpeg
+        target: /app/fakeWebcam.jpg
+      # DEBUG: Bind the source code to prevent having to rebuild every change.
+      - type: bind
+        source: ../../wasmiot-supervisor/host_app
+        target: /app/host_app
+
+networks:
+  default:
+    # TODO: Change when using with eventual demo!
+    name: wasmiot-net

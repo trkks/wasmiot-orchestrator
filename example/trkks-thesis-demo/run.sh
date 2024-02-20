@@ -1,5 +1,16 @@
 # README: Run from project root (i.e., wasmiot-orchestrator/).
 
+if [ $# -lt 1 ]; then
+    echo "ARG1: name of initial camera device required"
+    exit 1
+elif [ $# -lt 2 ]; then 
+    echo "ARG2: name of alternate camera device required"
+    exit 1
+fi
+
+START_CAM_DEVICE=$1
+ALTER_CAM_DEVICE=$2
+
 function dorcli() {
     npm run client -- "$@"
 }
@@ -34,9 +45,9 @@ DEPLOYMENT_NAME=snaked
 dorcli deployment rm $DEPLOYMENT_NAME
 dorcli deployment create $DEPLOYMENT_NAME \
   --main $CLIENT_MOD --start index \
-  -d _ -m $CLIENT_MOD -f _ \
-  -d _ -m $SNAKE_MOD  -f _ \
-  -d _ -m $CAMERA_MOD -f _ \
+  -d $START_CAM_DEVICE -m $CLIENT_MOD -f _ \
+  -d $ALTER_CAM_DEVICE -m $SNAKE_MOD  -f _ \
+  -d $START_CAM_DEVICE -m $CAMERA_MOD -f _ \
 
 # Deploy.
 dorcli deployment deploy $DEPLOYMENT_NAME
