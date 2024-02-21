@@ -201,7 +201,21 @@ class Orchestrator {
             let funcFilledResourcePairings = [];
             for (let x of manifest.resourcePairings) {
                 if (!x.func) {
-                    for (let f of x.module.exports) {
+                    // NOTE: For some reason Wasm (compiled from Rust) seems
+                    // to contain 3rd party libraries' exported functions as its
+                    // "own" exports. I.e.,
+                    // if module x exports functions f and g
+                    // and module y exports function h
+                    // and h uses f
+                    // resulting .wasm module y will export all functions f g and h.
+                    //
+                    // To deal with this, filter out any non-described functions here.
+                    const expectedExports = x.module.exports
+                        .filter(exp => {
+                            const funcDescPath = utils.supervisorExecutionPath(x.module.name, exp.name);
+                            return x.module.description.paths.hasOwnProperty(funcDescPath);
+                        });
+                    for (let f of expectedExports) {
                         // NOTE: Copying references!
                         funcFilledResourcePairings.push({
                             device: x.device,
