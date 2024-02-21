@@ -552,9 +552,7 @@ function createSolution(deploymentId, manifest, resourcePairings, packageBaseUrl
         let funcPathKey = utils.supervisorExecutionPath(x.module.name, x.func);
         let moduleEndpointTemplate = x.module.description.paths[funcPathKey];
         if (moduleEndpointTemplate === undefined) {
-            // Skip any exports that have not been listed in module's
-            // description.
-            continue;
+            throw `Expected function ${x.module.name}/${x.func} not found based on module's description. Are you sure your description of the module is correct?`;
         }
 
         // Build the __SINGLE "MAIN" OPERATION'S__ parameters for the request
@@ -613,14 +611,6 @@ function createSolution(deploymentId, manifest, resourcePairings, packageBaseUrl
 
         deploymentsToDevices[deviceIdStr]
             .endpoints[x.module.name][x.func] = endpoint;
-    }
-
-    // It does not make sense to have a device without any possible
-    // interaction (and this would be a bug).
-    let unnecessaryDevice = Object.entries(deploymentsToDevices)
-        .find(([_, x]) => Object.entries(x.endpoints).length === 0);
-    if (unnecessaryDevice) {
-        return `no endpoints defined for device '${unnecessaryDevice[0]}'`;
     }
 
     // Now that the devices and functions are solved, do another iteration to
