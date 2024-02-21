@@ -3,6 +3,11 @@ const WAIT_READY = 0;//3000;
 /* Time in ms between fetching game frames */
 const GAME_TICK = 750;
 
+/* Size of canvas (and game view) */
+const SCREEN_SIZE = [64 * 20, 64 * 10];
+/* Origin of UI-messages */
+const MESSAGE_COORS = [20, 20];
+
 /* Paths where the .wasm containing game logic can be queried from */
 const SNAKE_GAME_API = {
     init:  {                   path: "modules/snake/new",                    method: "POST" },
@@ -84,17 +89,27 @@ function gameOver() {
     gameIsOver = true;
 }
 
-async function updateView(ctx, imgBlob) {
-    if (imgBlob) {
-        const bitmap = await createImageBitmap(imgBlob);
-        ctx.drawImage(bitmap, 0, 0, 64 * 20, 64 * 10);
+var bitmap;
+async function updateView(ctx, stateUpdate) {
+    // Clear screen.
+    ctx.clearRect(0,0, ...SCREEN_SIZE);
+    
+    // Game state at bottom.
+    if (stateUpdate) {
+        // Only create the bitmap when needed.
+        bitmap = await createImageBitmap(stateUpdate);
     }
+    ctx.drawImage(bitmap, 0, 0, ...SCREEN_SIZE);
 
+    // "UI" on top.
+    let coors = Array.from(MESSAGE_COORS);
     if (paused) {
-        ctx.fillStyle = "white";
+        ctx.fillStyle = "black";
         ctx.font      = "20px mono";
         ctx.textAlign = "left";
-        ctx.fillText("PAUSED", 20, 20);
+        ctx.fillText("PAUSED", ...coors);
+        // Lower the next message so they are not overlapping.
+        coors[1] += 20;
     }
 
     if (gameIsOver) {
@@ -103,10 +118,9 @@ async function updateView(ctx, imgBlob) {
         ctx.fillStyle = "red";
         ctx.font      = "20px mono";
         ctx.textAlign = "left";
-        ctx.fillText(`GAME OVER (Press R to restart)`, 20, 20);
+        ctx.fillText(`GAME OVER (Press R to restart)`, ...coors);
     }
 }
-
 
 /*
  * Get blob of the next image frame of the game.
@@ -140,8 +154,8 @@ async function updateGame(ctx) {
 
 async function init(canvas) {
     const ctx = canvas.getContext("2d");
-    canvas.width  = 64 * 20;
-    canvas.height = 64 * 10;
+    canvas.width  = SCREEN_SIZE[0];
+    canvas.height = SCREEN_SIZE[1];
 
     // Show starting screen.
     gameOver();
@@ -151,6 +165,9 @@ async function init(canvas) {
 }
 
 var imgBlob;
+/*
+ * Update view based on game state. Return false if game state update fails.
+ */
 async function gameLoop(ctx) {
     if (!paused) {
         try {
@@ -158,9 +175,11 @@ async function gameLoop(ctx) {
         } catch (e) {
             console.log(e);
             gameOver();
+            return false;
         }
     }
     await updateView(ctx, imgBlob);
+    return true;
 }
 
 async function restartGame(ctx, dowait=true) {
@@ -177,7 +196,7 @@ async function restartGame(ctx, dowait=true) {
     // Wait for some time before starting the game loop so that player
     // can prepare.
     const startLoop = function() {
-        // Start game loop.
+        // Start game loop that TODO runs every time the game state update succeeds.
         gameLoopInterval = setInterval(() => gameLoop(ctx), GAME_TICK);
     };
     if (dowait) {

@@ -1,36 +1,78 @@
 version: '3.4'
 
 services:
+  orchestrator:
+    profiles:
+      - demo
+    build:
+      context: ../../fileserv
+      dockerfile: ./Dockerfile
+    environment:
+      MONGODB_HOST: mongo
+      MONGODB_PORT: 27017
+      MONGO_ROOT_USERNAME: root
+      MONGO_ROOT_PASSWORD: example
+    command: nodejs ./server.js
+
+  mongo:
+    profiles:
+      - demo
+    image: mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    command: mongod --port 27017
+    volumes:
+      - mongo-config:/DATA/CONFIGDB
+      - mongo-db:/DATA/DB
+
   device-base:
     profiles:
       - ABSTRACT_BASE_HACK_DO_NOT_USE
     build:
       context: ../../wasmiot-supervisor
- 
-  alternate-camera:
-    extends: device-base
-    profiles:
-      - device
     environment:
       - DEVICE_TYPE=camera-thingi
-      - FLASK_APP=alternate-camera-thingi
-    ports:
-      - 3002:5000
     volumes:
       - ../device1/configs:/app/instance/configs
       - ../device1/modules:/app/instance/modules
       - ../device1/output:/app/instance/output
-      # For testing on a single host with only one webcam attached, mount some
-      # fake webcam image for the device to use instead. 
+
+  primary-camera:
+    extends: device-base
+    profiles:
+      - demo
+    environment:
+      - FLASK_APP=primary-camera-thingi
+    ports:
+      - 3001:5000
+    # Needed for host camera access.
+    privileged: true
+
+  alternate-camera:
+    extends: device-base
+    profiles:
+      - demo
+    environment:
+      - FLASK_APP=alternate-camera-thingi
+    ports:
+      - 3002:5000
+    volumes:
       - type: bind
+        # Use this for testing on a single host with only one webcam attached,
+        # mounting some fake webcam image for the device to use instead.
         source: ./fakeWebcam.jpeg
         target: /app/fakeWebcam.jpg
-      # DEBUG: Bind the source code to prevent having to rebuild every change.
-      - type: bind
-        source: ../../wasmiot-supervisor/host_app
-        target: /app/host_app
+    # Use these when two cameras available on single host.
+    #        source: /dev/video1
+    #        target: /dev/video0
+    #privileged: true
+
+volumes:
+  mongo-config:
+  mongo-db:
 
 networks:
   default:
-    # TODO: Change when using with eventual demo!
-    name: wasmiot-net
+    name: trkks-thesis-demo-net
