@@ -33,17 +33,20 @@ const migrate = async (request, response) => {
             .findOne(utils.nameOrIdFilter(request.params.moduleId));
     const migratingModuleId = migratingModule._id.toString();
 
-    // If the source device is not given, the given module is assumed to be on
-    // one device only and the module on that device is selected for migration.
     let sourceDeviceId;
     if (request.body.from) {
         sourceDeviceId = (await deviceCollection
             .findOne(utils.nameOrIdFilter(request.body.from)))
             ._id.toString();
     } else {
-        sourceDeviceId = Object.values(deployment.resourcePairings)
-            .find(x => x.module.toString() === migratingModuleId)
-            .device.toString();
+        // If the source device is not given, the given module is assumed to be
+        // on one device only and the module on that device is selected for
+        // migration.
+        sourceDeviceId = Object.entries(deployment.solution)
+            .find(([_did, x]) =>
+                 Object.values(x.modules)
+                    .find(y => y.id.toString() === migratingModuleId)
+            )[0];
     }
 
     if (!deployment || !sourceDeviceId || !migratingModuleId) {
