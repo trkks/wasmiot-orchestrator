@@ -36,5 +36,17 @@
                 "stage": "output"
             }
         ]
+    },
+    "c_env": {
+        "parameters": [],
+        "method": "POST",
+        "output": "integer",
+        "mounts": [
+            {
+                "name": "outFile",
+                "mediaType": "application/octet-stream",
+                "stage": "output"
+            }
+        ]
     }
 }
