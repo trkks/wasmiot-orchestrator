@@ -26,4 +26,4 @@ RUN npm run generate
 # Compile the Typescript implementation into Javascript.
 RUN npm run compile
 
-ENTRYPOINT [ "npm", "run", "--", "client" ]
+ENTRYPOINT [ "/bin/bash", "-c" ]
