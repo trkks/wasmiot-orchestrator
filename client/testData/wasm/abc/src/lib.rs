@@ -9,6 +9,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hasher;
 use std::fs;
+use std::env;
 
 
 const DEPLOY_FILE_NAME: &str = "deployFile";
@@ -50,7 +51,7 @@ pub fn b() -> f32 {
     4.2
 }
 
-/// Demonstrates writing to a file and returning unsigned 32bit integer.
+/// Demonstrates writing to an output file and returning unsigned 32bit integer.
 #[no_mangle]
 pub fn c() -> u32 {
     // Write something into the file to indicate it is really manipulated.
@@ -58,4 +59,15 @@ pub fn c() -> u32 {
 
     // The Wasm-integer is a _signed_ 32bit so cut the unsigned short.
     i32::MAX as u32
+}
+
+/// Demonstrates reading an environment variable and writing it to an output file.
+#[no_mangle]
+pub fn c_env() -> i32 {
+    let Ok(device_name) = env::var("FLASK_APP") else { return -1 };
+    match fs::write(OUTPUT_FILE_NAME, format!("Hi, my name is '{}'", device_name)) {
+        Ok(_) => {},
+        Err(e) => return handle_error(e, MountReadFailed::Out),
+    };
+    0
 }
