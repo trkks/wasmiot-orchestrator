@@ -89,7 +89,6 @@ function gameOver() {
     gameIsOver = true;
 }
 
-var bitmap;
 async function updateView(ctx, stateUpdate) {
     // Clear screen.
     ctx.clearRect(0,0, ...SCREEN_SIZE);
@@ -97,9 +96,9 @@ async function updateView(ctx, stateUpdate) {
     // Game state at bottom.
     if (stateUpdate) {
         // Only create the bitmap when needed.
-        bitmap = await createImageBitmap(stateUpdate);
+        const bitmap = await createImageBitmap(stateUpdate);
+        ctx.drawImage(bitmap, 0, 0, ...SCREEN_SIZE);
     }
-    ctx.drawImage(bitmap, 0, 0, ...SCREEN_SIZE);
 
     // "UI" on top.
     let coors = Array.from(MESSAGE_COORS);

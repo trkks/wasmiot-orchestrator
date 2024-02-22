@@ -44,7 +44,7 @@ docker-compose -f $composepath --profile demo up --build --detach
 
 wait_prompt "Wait a bit for orchestrator to set up" 5
 
-servercontainername="trkks-thesis-demo-orchestrator"
+servercontainername="orchestrator"
 dockernetworkname="trkks-thesis-demo-net"
 
 docker run \
