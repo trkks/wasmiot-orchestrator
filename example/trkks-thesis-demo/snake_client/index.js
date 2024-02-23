@@ -178,15 +178,26 @@ async function gameLoop(ctx) {
     }
     await updateView(ctx, imgBlob);
 
-    return true;
+    return !gameIsOver;
 }
+
+var gameTimestamps;
+var gameTimestampsField;
 
 function recurringGameLoop(ctx) {
     /*
      * When one frame update is finished, start counting towards next one.
      **/
     async function f() {
-        if (await gameLoop(ctx)) {
+        // Attempt to prevent update ("tick") bursts which probably originates
+        // from restart and this timeout interleaving...
+        const gameHasStarted = gameLoopInterval;
+
+        if (gameHasStarted && await gameLoop(ctx)) {
+            const updateFinishTime = Date.now();
+            const updateDelta = updateFinishTime - gameTimestamps[0];
+            gameTimestamps.push(updateDelta);
+            gameTimestampsField.value = updateDelta;
             gameLoopInterval = setTimeout(f, GAME_TICK);
         }
     }
@@ -200,8 +211,6 @@ async function restartGame(ctx, dowait=true) {
         gameOver();
     }
 
-    gameIsOver = false;
-
     // Initialize the game at server.
     await executeSupervisor(SNAKE_GAME_API.init, ...GRID_SIZE);
 
@@ -211,9 +220,13 @@ async function restartGame(ctx, dowait=true) {
     // Wait for some time before starting the game loop so that player
     // can prepare.
     const startLoop = function() {
-        // Start game loop that TODO runs every time the game state update succeeds.
+        // Start game loop that runs every time the game state update succeeds.
         gameLoopInterval = setTimeout(recurringGameLoop(ctx), GAME_TICK);
+        gameTimestamps = [Date.now()];
     };
+
+    gameIsOver = false;
+
     if (dowait) {
         setTimeout(startLoop, WAIT_READY);
     } else {
@@ -266,6 +279,7 @@ function initKeyDownControl(ctx) {
 
 window.onload = async () => {
     const ctx = await init(document.getElementById("canvas"));
+    gameTimestampsField = document.querySelector("#timestamp");
     initKeyDownControl(ctx);
     // Start game as paused.
     paused = true;
