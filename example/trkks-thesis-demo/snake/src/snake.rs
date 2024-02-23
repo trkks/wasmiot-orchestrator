@@ -5,22 +5,39 @@ pub struct SnakeGame {
     board: Board,
     board_size: V2,
     snake: Vec<V2>,
-    apple: V2,
+    food: V2,
     dir: V2,
     input: Input,
+}
+
+fn spawn_food(bounds: V2) -> V2 {
+    V2 {
+        x: (rand::random::<f32>() * bounds.x as f32) as i32,
+        y: (rand::random::<f32>() * bounds.y as f32) as i32,
+    }
 }
 
 impl SnakeGame {
     pub fn new(width: usize, height: usize) -> Self {
         let board = vec![GameObject::Floor; width * height];
         let board_size = V2 { x: width as i32, y: height as i32 };
-        let snake = vec![V2 { x: 5, y: 5 }, V2 { x: 6, y: 5 }];
-        let apple = V2 { x: 9, y: 3 };
+        let (head_x, head_y) = (width as i32 / 2, height as i32 / 2);
+        let snake = vec![
+            V2 {
+                x: head_x,
+                y: head_y,
+            },
+            V2 {
+                x: (head_x + 1) % width as i32,
+                y: head_y,
+            }
+        ];
+        let food = spawn_food(board_size);
         let dir = V2 { x: 0, y: -1 };
         let input = Input::Undefined;
 
         Self {
-            board, board_size, snake, apple, dir, input,
+            board, board_size, snake, food, dir, input,
         }
     }
 
@@ -29,9 +46,9 @@ impl SnakeGame {
     }
 
     /// Forward the game state and return the type of game object that the
-    /// player head is on top of. This signals to caller if for example an apple was picked up and
+    /// player head is on top of. This signals to caller if for example an food was picked up and
     /// thus a sound-effect should play and score be incremented.
-    pub fn next_frame(&mut self) -> Result<GameObject, &'static str> {
+    pub fn next_frame(&mut self) -> Result<GameObject, String> {
         let mut collided_go = GameObject::Floor;
 
         let input = &self.input;
@@ -81,11 +98,10 @@ impl SnakeGame {
             std::mem::swap(part, &mut last_head);
         }
 
-        if self.snake[0].x == self.apple.x && self.snake[0].y == self.apple.y {
-            collided_go = GameObject::Apple;
+        if self.snake[0].x == self.food.x && self.snake[0].y == self.food.y {
+            collided_go = GameObject::Food;
             self.snake.push(*self.snake.last().unwrap());
-            self.apple.x = (rand::random::<f32>() * self.board_size.x as f32) as i32;
-            self.apple.y = (rand::random::<f32>() * self.board_size.y as f32) as i32;
+            self.food = spawn_food(self.board_size);
         }
 
         for part in self.board.iter_mut() {
@@ -95,12 +111,12 @@ impl SnakeGame {
         for p in self.snake.iter().skip(1) {
             self.board[(p.y * self.board_size.x as i32 + p.x) as usize] = GameObject::Body;
         }
-        self.board[(self.apple.y * self.board_size.x as i32 + self.apple.x) as usize] = GameObject::Apple;
+        self.board[(self.food.y * self.board_size.x as i32 + self.food.x) as usize] = GameObject::Food;
         let snake_ate_self = self.snake[1..].iter()
             .any(|p| p.x == self.snake[0].x && p.y == self.snake[0].y);
         if snake_ate_self {
             self.board[(self.snake[0].y * self.board_size.x as i32 + self.snake[0].x) as usize] = GameObject::Overlap;
-            return Err("Game over");
+            return Err("Game over".to_owned());
         }
 
         Ok(collided_go)
@@ -133,7 +149,7 @@ pub enum Input {
 
 #[derive(Debug, Clone)]
 pub enum GameObject {
-    Apple,
+    Food,
     Body,
     Floor,
     Head,
