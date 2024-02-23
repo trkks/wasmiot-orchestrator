@@ -92,9 +92,6 @@ function gameOver() {
 }
 
 async function updateView(ctx, stateUpdate) {
-    // Clear screen.
-    ctx.clearRect(0,0, ...SCREEN_SIZE);
-    
     // Game state at bottom.
     if (stateUpdate) {
         // Only create the bitmap when needed.
@@ -184,6 +181,19 @@ async function gameLoop(ctx) {
     return true;
 }
 
+function recurringGameLoop(ctx) {
+    /*
+     * When one frame update is finished, start counting towards next one.
+     **/
+    async function f() {
+        if (await gameLoop(ctx)) {
+            gameLoopInterval = setTimeout(f, GAME_TICK);
+        }
+    }
+
+    return f;
+}
+
 async function restartGame(ctx, dowait=true) {
     // Make sure the earlier instance is ended.
     if (gameLoopInterval) {
@@ -195,11 +205,14 @@ async function restartGame(ctx, dowait=true) {
     // Initialize the game at server.
     await executeSupervisor(SNAKE_GAME_API.init, ...GRID_SIZE);
 
+    // Clear screen.
+    ctx.clearRect(0,0, ...SCREEN_SIZE);
+
     // Wait for some time before starting the game loop so that player
     // can prepare.
     const startLoop = function() {
         // Start game loop that TODO runs every time the game state update succeeds.
-        gameLoopInterval = setInterval(() => gameLoop(ctx), GAME_TICK);
+        gameLoopInterval = setTimeout(recurringGameLoop(ctx), GAME_TICK);
     };
     if (dowait) {
         setTimeout(startLoop, WAIT_READY);
