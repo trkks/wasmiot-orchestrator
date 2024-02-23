@@ -4,19 +4,36 @@
     <meta charset="utf-8">
     <title>Thesis demo - Snake game</title>
     <style>
+      #container {
+        width: 15%;
+        height: 15%;
+      }
       canvas {
         margin: .5%;
         border-style: solid;
+      }
+      div {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      p {
+        white-space: pre;
+        font-family: monospace;
+        text-align: center;
       }
     </style>
     <script src="./modules/snake_client/index/index.js"></script>
   </head>
   <body>
-    <div>
-      <label for="timestamp">Milliseconds since game start:</label>
-      <input id="timestamp" type="number" disabled></input>
+    <div id="container">
+      <div>
+      <p id="timestamp">0ms</p>
+      </div>
+      <div>
+        <canvas id="canvas"></canvas>
+      </div>
     </div>
-    <canvas id="canvas"></canvas>
   </body>
 </html>
 

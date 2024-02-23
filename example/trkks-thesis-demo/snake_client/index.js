@@ -4,11 +4,11 @@ const WAIT_READY = 0;//3000;
 const GAME_TICK = 750;
 
 /* Size of game grid */
-const GRID_SIZE = [20, 10];
+const GRID_SIZE = [3, 3];
 /* Size of canvas (and game view) */
 const SCREEN_SIZE = GRID_SIZE.map(a => a * 64);
 /* Origin of UI-messages */
-const MESSAGE_COORS = [20, 20];
+const MESSAGE_COORS = [0, 0];
 
 /* Paths where the .wasm containing game logic can be queried from */
 const SNAKE_GAME_API = {
@@ -102,21 +102,24 @@ async function updateView(ctx, stateUpdate) {
     // "UI" on top.
     let coors = Array.from(MESSAGE_COORS);
     if (paused) {
-        ctx.fillStyle = "black";
-        ctx.font      = "20px mono";
-        ctx.textAlign = "left";
-        ctx.fillText("PAUSED", ...coors);
-        // Lower the next message so they are not overlapping.
-        coors[1] += 20;
+        ctx.fillStyle = "blue";
+        ctx.fillRect(0,0, ...SCREEN_SIZE);
+        //ctx.font      = "20px mono";
+        //ctx.textAlign = "left";
+        //ctx.fillText("PAUSED", ...coors);
+        //// Lower the next message so they are not overlapping.
+        //coors[1] += 20;
     }
 
     if (gameIsOver) {
         // Show that the game has ended.
-        console.log("Game over.");
         ctx.fillStyle = "red";
-        ctx.font      = "20px mono";
-        ctx.textAlign = "left";
-        ctx.fillText(`GAME OVER (Press R to restart)`, ...coors);
+        ctx.fillRect(0,0, ...SCREEN_SIZE);
+        //console.log("Game over.");
+        //ctx.fillStyle = "red";
+        //ctx.font      = "20px mono";
+        //ctx.textAlign = "left";
+        //ctx.fillText(`GAME OVER (Press R to restart)`, ...coors);
     }
 }
 
@@ -184,6 +187,13 @@ async function gameLoop(ctx) {
 var gameTimestamps;
 var gameTimestampsField;
 
+function leftPad(n, s) {
+    for (let _ in Array.from(Array(n > s.length ? n - s.length : 0).keys())) {
+        s = " " + s
+    }
+    return s;
+}
+
 function recurringGameLoop(ctx) {
     /*
      * When one frame update is finished, start counting towards next one.
@@ -197,7 +207,7 @@ function recurringGameLoop(ctx) {
             const updateFinishTime = Date.now();
             const updateDelta = updateFinishTime - gameTimestamps[0];
             gameTimestamps.push(updateDelta);
-            gameTimestampsField.value = updateDelta;
+            gameTimestampsField.textContent = leftPad(6, String(updateDelta)) + "ms";
             gameLoopInterval = setTimeout(f, GAME_TICK);
         }
     }
