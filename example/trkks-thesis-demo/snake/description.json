@@ -1,5 +1,15 @@
 {
     "new": {
+        "parameters": [
+            {
+                "name": "width",
+                "type": "integer"
+            },
+            {
+                "name": "height",
+                "type": "integer"
+            }
+        ],
         "method": "POST",
         "output": "integer"
     },

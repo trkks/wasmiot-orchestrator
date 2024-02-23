@@ -3,8 +3,10 @@ const WAIT_READY = 0;//3000;
 /* Time in ms between fetching game frames */
 const GAME_TICK = 750;
 
+/* Size of game grid */
+const GRID_SIZE = [20, 10];
 /* Size of canvas (and game view) */
-const SCREEN_SIZE = [64 * 20, 64 * 10];
+const SCREEN_SIZE = GRID_SIZE.map(a => a * 64);
 /* Origin of UI-messages */
 const MESSAGE_COORS = [20, 20];
 
@@ -168,7 +170,7 @@ var imgBlob;
  * Update view based on game state. Return false if game state update fails.
  */
 async function gameLoop(ctx) {
-    if (!paused) {
+    if (!paused && !gameIsOver) {
         try {
             imgBlob = await updateGame(ctx);
         } catch (e) {
@@ -178,6 +180,7 @@ async function gameLoop(ctx) {
         }
     }
     await updateView(ctx, imgBlob);
+
     return true;
 }
 
@@ -190,7 +193,7 @@ async function restartGame(ctx, dowait=true) {
     gameIsOver = false;
 
     // Initialize the game at server.
-    await executeSupervisor(SNAKE_GAME_API.init);
+    await executeSupervisor(SNAKE_GAME_API.init, ...GRID_SIZE);
 
     // Wait for some time before starting the game loop so that player
     // can prepare.
@@ -211,6 +214,7 @@ async function restartGame(ctx, dowait=true) {
 function initKeyDownControl(ctx) {
     document.addEventListener("keydown",
         async function(e) {
+            console.log("Input:", e.key);
             let code = null;
             // Control the running game.
             switch (e.key) {
