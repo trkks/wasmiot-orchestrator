@@ -11,6 +11,8 @@ pub struct SnakeGame {
 }
 
 fn spawn_food(bounds: V2) -> V2 {
+    // NOTE HARDCODE FOR DEMO:
+    return V2 {x: 0, y: 0};
     V2 {
         x: (rand::random::<f32>() * bounds.x as f32) as i32,
         y: (rand::random::<f32>() * bounds.y as f32) as i32,
@@ -21,19 +23,21 @@ impl SnakeGame {
     pub fn new(width: usize, height: usize) -> Self {
         let board = vec![GameObject::Floor; width * height];
         let board_size = V2 { x: width as i32, y: height as i32 };
-        let (head_x, head_y) = (width as i32 / 2, height as i32 / 2);
+        // NOTE HARDCODE FOR DEMO:
+        //let (head_x, head_y) = (width as i32 / 2, height as i32 / 2);
+        let (head_x, head_y) = (1, 1);
         let snake = vec![
             V2 {
                 x: head_x,
                 y: head_y,
             },
             V2 {
-                x: (head_x + 1) % width as i32,
+                x: (head_x - 1) % width as i32,
                 y: head_y,
             }
         ];
         let food = spawn_food(board_size);
-        let dir = V2 { x: 0, y: -1 };
+        let dir = V2 { x: 1, y: 0 };
         let input = Input::Undefined;
 
         Self {
@@ -48,9 +52,39 @@ impl SnakeGame {
     /// Forward the game state and return the type of game object that the
     /// player head is on top of. This signals to caller if for example an food was picked up and
     /// thus a sound-effect should play and score be incremented.
-    pub fn next_frame(&mut self) -> Result<GameObject, String> {
+    pub fn next_frame(&mut self, first_frame: bool) -> Result<GameObject, String> {
         let mut collided_go = GameObject::Floor;
 
+        // NOTE HARDCODED FOR DEMO:
+        if !first_frame {
+            self.move_snake();
+        }
+
+        if self.snake[0].x == self.food.x && self.snake[0].y == self.food.y {
+            collided_go = GameObject::Food;
+            self.snake.push(*self.snake.last().unwrap());
+            self.food = spawn_food(self.board_size);
+        }
+
+        for part in self.board.iter_mut() {
+            *part = GameObject::Floor;
+        }
+        self.board[(self.snake[0].y * self.board_size.x as i32 + self.snake[0].x) as usize] = GameObject::Head;
+        for p in self.snake.iter().skip(1) {
+            self.board[(p.y * self.board_size.x as i32 + p.x) as usize] = GameObject::Body;
+        }
+        self.board[(self.food.y * self.board_size.x as i32 + self.food.x) as usize] = GameObject::Food;
+        let snake_ate_self = self.snake[1..].iter()
+            .any(|p| p.x == self.snake[0].x && p.y == self.snake[0].y);
+        if snake_ate_self {
+            self.board[(self.snake[0].y * self.board_size.x as i32 + self.snake[0].x) as usize] = GameObject::Overlap;
+            return Err("Game over".to_owned());
+        }
+
+        Ok(collided_go)
+    }
+
+    fn move_snake(&mut self) {
         let input = &self.input;
 
         match input {
@@ -60,7 +94,6 @@ impl SnakeGame {
             Input::Right => self.dir = V2 { x: 1, y: 0 },
             _            => { },
         };
-
         let mut last_head = self.snake[0];
         self.snake[0] = {
             let (width, height) = (self.board_size.x as i32, self.board_size.y as i32);
@@ -97,29 +130,6 @@ impl SnakeGame {
         for part in self.snake.iter_mut().skip(1) {
             std::mem::swap(part, &mut last_head);
         }
-
-        if self.snake[0].x == self.food.x && self.snake[0].y == self.food.y {
-            collided_go = GameObject::Food;
-            self.snake.push(*self.snake.last().unwrap());
-            self.food = spawn_food(self.board_size);
-        }
-
-        for part in self.board.iter_mut() {
-            *part = GameObject::Floor;
-        }
-        self.board[(self.snake[0].y * self.board_size.x as i32 + self.snake[0].x) as usize] = GameObject::Head;
-        for p in self.snake.iter().skip(1) {
-            self.board[(p.y * self.board_size.x as i32 + p.x) as usize] = GameObject::Body;
-        }
-        self.board[(self.food.y * self.board_size.x as i32 + self.food.x) as usize] = GameObject::Food;
-        let snake_ate_self = self.snake[1..].iter()
-            .any(|p| p.x == self.snake[0].x && p.y == self.snake[0].y);
-        if snake_ate_self {
-            self.board[(self.snake[0].y * self.board_size.x as i32 + self.snake[0].x) as usize] = GameObject::Overlap;
-            return Err("Game over".to_owned());
-        }
-
-        Ok(collided_go)
     }
 
     pub fn board(&self) -> &Board {

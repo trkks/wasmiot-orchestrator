@@ -22,6 +22,11 @@ const MIGRATION_API = {
     camera: { action: "migrate", path: "camera" },
 }
 
+/* Running frame number */
+var FRAMES = 0;
+/* The frame # (index) at which to request camera migration */
+const DEMO_MIGRATE_FRAME = 2;
+
 /*
  * Helper that queries for results from supervisor.
  *
@@ -101,15 +106,6 @@ async function updateView(ctx, stateUpdate) {
 
     // "UI" on top.
     let coors = Array.from(MESSAGE_COORS);
-    if (paused) {
-        ctx.fillStyle = "blue";
-        ctx.fillRect(0,0, ...SCREEN_SIZE);
-        //ctx.font      = "20px mono";
-        //ctx.textAlign = "left";
-        //ctx.fillText("PAUSED", ...coors);
-        //// Lower the next message so they are not overlapping.
-        //coors[1] += 20;
-    }
 
     if (gameIsOver) {
         // Show that the game has ended.
@@ -121,6 +117,17 @@ async function updateView(ctx, stateUpdate) {
         //ctx.textAlign = "left";
         //ctx.fillText(`GAME OVER (Press R to restart)`, ...coors);
     }
+
+    //if (paused) {
+    //    ctx.fillStyle = "blue";
+    //    ctx.fillRect(0,0, ...SCREEN_SIZE);
+    //    //ctx.font      = "20px mono";
+    //    //ctx.textAlign = "left";
+    //    //ctx.fillText("PAUSED", ...coors);
+    //    //// Lower the next message so they are not overlapping.
+    //    //coors[1] += 20;
+    //}
+
 }
 
 /*
@@ -173,6 +180,7 @@ async function gameLoop(ctx) {
     if (!paused && !gameIsOver) {
         try {
             imgBlob = await updateGame(ctx);
+            FRAMES++;
         } catch (e) {
             console.log(e);
             gameOver();
@@ -180,6 +188,11 @@ async function gameLoop(ctx) {
         }
     }
     await updateView(ctx, imgBlob);
+
+    if (FRAMES === DEMO_MIGRATE_FRAME) {
+        console.log(`Requesting cam migration at time ${gameTimestamps.at(-1)}`)
+        executeSupervisor(MIGRATION_API.camera);
+    }
 
     return !gameIsOver;
 }

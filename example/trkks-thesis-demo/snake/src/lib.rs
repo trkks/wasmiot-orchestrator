@@ -47,6 +47,7 @@ pub mod snake_adapter {
         pub board: Vec<snake::GameObject>,
 
     }
+    static mut FIRST_FRAME: bool = true;
 
     /// Serialize the game in the __STATIC VARIABLE__ into bytes.
     fn serialize_game() -> (Result<snake::GameObject, String>, Vec<u8>) {
@@ -58,7 +59,7 @@ pub mod snake_adapter {
         unsafe {
             width = W;
             height = H;
-            game_status = GAME.as_mut().unwrap().next_frame();
+            game_status = GAME.as_mut().unwrap().next_frame(FIRST_FRAME);
             lines = GAME.as_mut().unwrap().board().chunks(width);
             serialized_size = SERIALIZED_SIZE;
         }
@@ -141,6 +142,8 @@ pub mod snake_adapter {
             H = height;
             SERIALIZED_SIZE = H * W + 3;
             GAME = Some(snake::SnakeGame::new(W, H));
+            // NOTE HARDCODED FOR DEMO:
+            FIRST_FRAME = true;
         }
     }
 
@@ -172,6 +175,10 @@ pub mod snake_adapter {
         }
 
         let (game_status, bytes) = serialize_game();
+        // TODO HARDCODED FOR DEMO:
+        unsafe {
+            FIRST_FRAME = false;
+        }
 
         if 0 < unsafe { save_serialized(bytes.as_ptr()) } {
             return 3;
