@@ -2,8 +2,7 @@ use std::io;
 
 use image::{Pixel, io as iio};
 
-use snake::{snake_adapter::{OUT_FILE, W, H, SERIALIZED_SIZE}, snake::GameObject};
-use camera::IMG_SIZE;
+use snake::{snake_adapter::{SnakeGameData, deserialize}, snake::GameObject};
 
 
 mod rpc_utils;
@@ -34,7 +33,7 @@ pub fn render(o: GameObject, scaled_jpeg_bytes: &[u8]) -> Vec<u8> {
         xs
     };
     match o {
-        GameObject::Apple => {
+        GameObject::Food => {
             // Put the pixel RGB-values into a grid.
             let img = iio::Reader::with_format(
                     io::Cursor::new(scaled_jpeg_bytes),
@@ -60,8 +59,7 @@ pub fn render(o: GameObject, scaled_jpeg_bytes: &[u8]) -> Vec<u8> {
 }
 
 const VN: usize = N * 3;
-const VW: usize = W * VN;
-const VIEW_SIZE: usize = (H * N) * VW;
+const MAX_SERIALIZED_GAME_SIZE: usize = 1024;
 
 /// Using RPCs, generate and save the next game frame.
 #[no_mangle]
@@ -69,7 +67,7 @@ pub fn next_frame() -> i32 {
     let state = {
         let Ok(game_state) = do_rpc(
             "snake", "next_frame_wasm32_wasi",
-            None, SERIALIZED_SIZE
+            None, MAX_SERIALIZED_GAME_SIZE,
         ) else { return 1; };
 
         game_state
@@ -95,30 +93,40 @@ pub fn next_frame() -> i32 {
 }
 
 pub fn _next_frame(game_state: &[u8], food_image: &[u8]) -> i32 {
+    let SnakeGameData { width, height, board, .. } = match deserialize(game_state) {
+        Ok(x)  => x,
+        Err(e) => {
+            eprintln!("{}", e);
+            return -1;
+        }
+    };
+    let (width, height) = (width as usize, height as usize);
+    let view_width = width * VN;
+    let view_size = (height * N) * view_width;
+
     // Render the game state including the apple image into the view.
-    let mut blocks = Vec::with_capacity(W * H);
-    for object_code in game_state.iter().take(W * H) {
-        let go = (*object_code).into();
-        let block = render(go, food_image);
+    let mut blocks = Vec::with_capacity(width * height);
+    for game_object in board {
+        let block = render(game_object, food_image);
         assert_eq!(block.len(), N * VN);
         blocks.push(block);
     }
 
     // Position the elements' squares into a grid.
-    let mut view = Box::new([255; VIEW_SIZE]);
+    let mut view = vec![255; view_size];
     
-    for yi in 0..H {
-        for xi in 0..W {
-            let block = &blocks[yi * W + xi];
-            let block_top_left = yi * VW * N + xi * VN;
+    for yi in 0..height {
+        for xi in 0..width {
+            let block = &blocks[yi * width + xi];
+            let block_top_left = yi * view_width * N + xi * VN;
             // Top to bottom.
             for i in 0..N {
                 // Left to right.
                 let mut j = 0;
                 while j < VN {
-                    view[block_top_left + VW * i + j + 0] = block[i * VN + j + 0];
-                    view[block_top_left + VW * i + j + 1] = block[i * VN + j + 1];
-                    view[block_top_left + VW * i + j + 2] = block[i * VN + j + 2];
+                    view[block_top_left + view_width * i + j + 0] = block[i * VN + j + 0];
+                    view[block_top_left + view_width * i + j + 1] = block[i * VN + j + 1];
+                    view[block_top_left + view_width * i + j + 2] = block[i * VN + j + 2];
                     j += 3;
                 }
             }
@@ -127,7 +135,7 @@ pub fn _next_frame(game_state: &[u8], food_image: &[u8]) -> i32 {
 
     // Create and save the output image to file.
     image::ImageBuffer::<image::Rgb<u8>, _>::from_vec(
-        (W * N) as u32, (H * N) as u32,
+        (width * N) as u32, (height * N) as u32,
         view.to_vec(),
     ).expect("bad img")
         .save("snake_game.jpeg")
