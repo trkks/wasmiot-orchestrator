@@ -21,40 +21,83 @@ pub fn index() -> i32 {
 
 pub const N: usize = 64;
 
-/// Return the RGB-pixels of square s*s representing game object o.
-pub fn render(o: GameObject, scaled_jpeg_bytes: &[u8]) -> Vec<u8> {
-    let fill_color = |r,g,b| {
-        let mut xs = Vec::with_capacity(3 * N * N);
-        let mut i = 0;
-        while i < (N * N * 3) {
-            xs.push(r); xs.push(g); xs.push(b);
-            i += 3;
+/// Render a triangle pointing along the x-axis (i.e., right).
+fn x_axis_triangle() -> Vec<u8> {
+    let mut xs = Vec::with_capacity(3 * N * N);
+
+    let x3 = 0_i32;
+    let x4 = N as i32 - 8; // Make the triangle's point a bit flatter.
+
+    // Top half (line is top-left to middle-right.
+    let x1 = 0_i32;
+    let y1 = 0_i32;
+    let x2 = N as i32 - 8; // Make the triangle's point a bit flatter.
+    let y2 = N as i32 / 2_i32;
+    for yi in 0..(N / 2) {
+        // Horizontal line
+        let y3 = yi as i32;
+        let y4 = yi as i32;
+
+        // Calculate line intersection at each row (from
+        // https://en.wikipedia.org/wiki/Line%E2%80%93line_intersection).
+        let px = (
+                (x1*y2 - y1*x2)*(x3 - x4) - (x1 - x2)*(x3*y4 - y3*x4)
+            ) / (
+                (x1 - x2)*(y3 - y4) - (y1 - y2)*(x3 - x4)
+        );
+
+        for _ in 0..px {
+            xs.push(0x60); xs.push(0x60); xs.push(0x60);
         }
-        xs
-    };
+
+        for _ in px..N as i32 {
+            xs.push(0xff); xs.push(0xff); xs.push(0xff);
+        }
+    }
+
+    // Bottom half is the same as upper half but with rows reversed.
+    xs.extend(xs.clone().chunks(N * 3).rev().flatten());
+
+    xs
+}
+
+const fn fill_color(r: u8, g :u8, b: u8) -> [u8; 12288] {
+    let mut xs = [0; 3 * N * N];
+    let mut i = 0;
+    while i < (N * N * 3) {
+        xs[i] = r; xs[i+1] = g; xs[i+2] = b;
+        i += 3;
+    }
+    xs
+}
+
+/// Put the pixel RGB-values of JPEG image into a grid.
+fn jpeg_pixels(jpeg_bytes: &[u8]) -> Vec<u8> {
+    let img = iio::Reader::with_format(
+            io::Cursor::new(jpeg_bytes),
+            image::ImageFormat::Jpeg,
+        )
+        .decode()
+        .expect("failed decoding JPEG image of RPC result");
+
+    let img_grid = img.into_rgb8()
+        .pixels()
+        .map(|p| p.to_rgb().0)
+        .flatten()
+        .collect::<Vec<u8>>();
+    assert_eq!(img_grid.len(), N * N * 3);
+
+    img_grid
+}
+
+/// Return the RGB-pixels of NxN cell representing game object o.
+pub fn render(o: GameObject, scaled_jpeg_bytes: &[u8]) -> Vec<u8> {
     match o {
-        GameObject::Food => {
-            // Put the pixel RGB-values into a grid.
-            let img = iio::Reader::with_format(
-                    io::Cursor::new(scaled_jpeg_bytes),
-                    image::ImageFormat::Jpeg,
-                )
-                .decode()
-                .expect("failed decoding JPEG image of RPC result");
-
-            let img_grid = img.into_rgb8()
-                .pixels()
-                .map(|p| p.to_rgb().0)
-                .flatten()
-                .collect::<Vec<u8>>();
-            assert_eq!(img_grid.len(), N * N * 3);
-
-            img_grid
-       },
-        GameObject::Body    => fill_color(0x77, 0x77, 0x77),
-        GameObject::Floor   => fill_color(0xff, 0xff, 0xff),
-        GameObject::Head    => fill_color(0x22, 0x22, 0x22),
-        GameObject::Overlap => fill_color(0xff, 0x00, 0x00),
+        GameObject::Food    => jpeg_pixels(scaled_jpeg_bytes),
+        GameObject::Body    => fill_color(0x80, 0x80, 0x80).to_vec(),
+        GameObject::Floor   => fill_color(0xff, 0xff, 0xff).to_vec(),
+        GameObject::Head    => x_axis_triangle(),
+        GameObject::Overlap => fill_color(0xff, 0x00, 0x00).to_vec(),
     }
 }
 
