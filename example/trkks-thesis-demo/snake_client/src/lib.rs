@@ -25,6 +25,12 @@ pub const N: usize = 64;
 fn x_axis_triangle() -> Vec<u8> {
     let mut xs = Vec::with_capacity(3 * N * N);
 
+    // Make highlight at top edge.
+    const EDGE_THICKNESS: usize = 1;
+    for _ in 0..N * EDGE_THICKNESS {
+        xs.push(0x00); xs.push(0x00); xs.push(0x00);
+    }
+
     let x3 = 0_i32;
     let x4 = N as i32 - 8; // Make the triangle's point a bit flatter.
 
@@ -33,7 +39,7 @@ fn x_axis_triangle() -> Vec<u8> {
     let y1 = 0_i32;
     let x2 = N as i32 - 8; // Make the triangle's point a bit flatter.
     let y2 = N as i32 / 2_i32;
-    for yi in 0..(N / 2) {
+    for yi in EDGE_THICKNESS..(N / 2) {
         // Horizontal line
         let y3 = yi as i32;
         let y4 = yi as i32;
@@ -47,10 +53,20 @@ fn x_axis_triangle() -> Vec<u8> {
         );
 
         for _ in 0..px {
-            xs.push(0x60); xs.push(0x60); xs.push(0x60);
+            xs.push(0x80); xs.push(0x80); xs.push(0x80);
+        }
+        
+        // Make a highlighted border for triangle's pointy edge.
+        const BORDER_THICKNESS: i32 = 5;
+        for _ in 0..BORDER_THICKNESS-2 {
+            xs.push(0x00); xs.push(0x00); xs.push(0x00);
+        }
+        for _ in 0..2 {
+            // Fade a bit into white (poor-man's antialias.)
+            xs.push(0xdd); xs.push(0xdd); xs.push(0xdd);
         }
 
-        for _ in px..N as i32 {
+        for _ in (px + BORDER_THICKNESS)..N as i32 {
             xs.push(0xff); xs.push(0xff); xs.push(0xff);
         }
     }
@@ -58,16 +74,43 @@ fn x_axis_triangle() -> Vec<u8> {
     // Bottom half is the same as upper half but with rows reversed.
     xs.extend(xs.clone().chunks(N * 3).rev().flatten());
 
+    // Make highlight at right vertical.
+    let mut i = 0;
+    while i < ((N-1) * N * 3) {
+        if (i + 3) % (N * 3) == 0 {
+            xs[i] = 0x00; xs[i+1] = 0x00; xs[i+2] = 0x00;
+        }
+        i += 3;
+    }
+
     xs
 }
 
 const fn fill_color(r: u8, g :u8, b: u8) -> [u8; 12288] {
     let mut xs = [0; 3 * N * N];
     let mut i = 0;
-    while i < (N * N * 3) {
-        xs[i] = r; xs[i+1] = g; xs[i+2] = b;
+
+    // Make highlight at top edge.
+    while i < (N * 3) {
+        xs[i] = 0x00; xs[i+1] = 0x00; xs[i+2] = 0x00;
         i += 3;
     }
+
+    while i < ((N-1) * N * 3) {
+        // Make highlight at vertical edges.
+        let is_row_start = i % (N * 3) == 0;
+        let is_row_end   = (i + 3) % (N * 3) == 0;
+        // NOTE HARDCODED FOR DEMO.
+        // Check if this is body as to blend into head on the right.
+        let is_body_part = r == 0x80;
+        if  is_row_start || (is_row_end && !is_body_part) {
+            xs[i] = 0x00; xs[i+1] = 0x00; xs[i+2] = 0x00;
+        } else {
+            xs[i] = r; xs[i+1] = g; xs[i+2] = b;
+        }
+        i += 3;
+    }
+
     xs
 }
 
@@ -80,14 +123,37 @@ fn jpeg_pixels(jpeg_bytes: &[u8]) -> Vec<u8> {
         .decode()
         .expect("failed decoding JPEG image of RPC result");
 
-    let img_grid = img.into_rgb8()
+    let mut xs = img.into_rgb8()
         .pixels()
         .map(|p| p.to_rgb().0)
         .flatten()
         .collect::<Vec<u8>>();
-    assert_eq!(img_grid.len(), N * N * 3);
+    assert_eq!(xs.len(), N * N * 3);
 
-    img_grid
+    // Make highlight at top edge.
+    let mut i = 0;
+    while i < (N * 3) {
+        xs[i] = 0x00; xs[i+1] = 0x00; xs[i+2] = 0x00;
+        i += 3;
+    }
+    // Make highlight at vertical edges.
+    let mut i = 0;
+    while i < ((N-1) * N * 3) {
+        // Make highlight at vertical edges.
+        if i % (N * 3) == 0 || (i + 3) % (N * 3) == 0 {
+            xs[i] = 0x00; xs[i+1] = 0x00; xs[i+2] = 0x00;
+        }
+        i += 3;
+    }
+
+    // Make highlight at bottom edge.
+    let mut i = (N - 1) * N * 3;
+    while i < (N * N * 3) {
+        xs[i] = 0x00; xs[i+1] = 0x00; xs[i+2] = 0x00;
+        i += 3;
+    }
+
+    xs
 }
 
 /// Return the RGB-pixels of NxN cell representing game object o.
