@@ -32,7 +32,7 @@
         "fd_prestat_get",
         "fd_prestat_dir_name",
         "random_get",
-        "proc_exit",
+        "proc_exit"
     ]
 }
 
