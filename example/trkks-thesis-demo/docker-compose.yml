@@ -50,14 +50,16 @@ services:
     # Needed for host camera access.
     volumes:
       - type: bind
-    #    # Use this for testing on a single host with only one webcam attached,
-    #    # mounting some fake webcam image for the device to use instead.
-    #    #source: ./fakeWebcam.jpeg
-    #    #target: /app/fakeWebcam.jpg
-    # Use these when two cameras available on single host.
-        source: /dev/video2
-        target: /dev/video0
-    privileged: true
+        # Use this for testing on a single host with only one webcam attached,
+        # mounting some fake webcam image for the device to use instead.
+        # NOTE: Do not enable privileged, which will use webcam anyway!
+        source: ./fakeWebcam.jpeg
+        target: /app/fakeWebcam.jpg
+    # Use these (mount AND privileged) when two cameras available on single
+    # host.
+    #    source: /dev/video2
+    #    target: /dev/video0
+    #privileged: true
 
   alternate-camera:
     extends: device-base
