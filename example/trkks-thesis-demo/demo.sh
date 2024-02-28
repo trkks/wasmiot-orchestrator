@@ -6,17 +6,6 @@
 #
 # NOTENOTE: Read the fine source code before you run it!
 
-if ! command -v python3; then
-    echo "'python3' is required to run this script"
-    exit 1
-fi
-
-if ! command -v cargo; then
-    echo "'cargo' is required to run this script"
-    exit 1
-fi
-
-set -e
 
 wait_prompt() {
     for i in $(seq 0 $2);
@@ -26,6 +15,31 @@ wait_prompt() {
     done
     echo ""
 }
+
+dockernetworkname="trkks-thesis-demo-net"
+serverhostname="orchestrator"
+primarydevicename="primary-camera-thingi"
+altdevicename="alternate-camera-thingi"
+if [ $# -eq 2 ]; then
+    dockernetworkname="wasmiot-net"
+    serverhostname="wasmiot-orchestrator"
+    # Set the alt camera to user argument.
+    primarydevicename=$1
+    altdevicename=$2
+    echo "NOTE!"
+    echo "Running in LAN with:"
+    echo "- the orchestrator '${serverhostname}'"
+    echo "- in Docker-network '${dockernetworkname}'"
+    echo "- searching for physical devices '${primarydevicename}' and '${altdevicename}'"
+    wait_prompt "IF THIS IS NOT INTENDED, CTRL-C NOW!" 7
+fi
+
+if ! command -v cargo; then
+    echo "'cargo' is required to run this script"
+    exit 1
+fi
+
+set -e
 
 # Build the WebAssembly modules.
 cd example/trkks-thesis-demo
@@ -37,24 +51,26 @@ cd -
 clientcontainername="wasmiot-orcli"
 docker build -t $clientcontainername -f client.Dockerfile .
 
-composepath=example/trkks-thesis-demo/docker-compose.yml
-
-# Start containers to have interaction in the system.
-docker-compose -f $composepath --profile demo up --build --detach
+composepath="example/trkks-thesis-demo/docker-compose.yml"
+if [ $# -eq 2 ]; then
+    # If running in LAN, use the appointed compose.
+    composepath="docker-compose.lan.yml"
+    docker-compose -f $composepath up --build --detach
+else
+    # Start containers to have interaction in the system.
+    docker-compose -f $composepath --profile demo up --build --detach
+fi
 
 wait_prompt "Wait a bit for orchestrator to set up" 5
 
-servercontainername="orchestrator"
-dockernetworkname="trkks-thesis-demo-net"
-
 docker run \
     --rm \
-    --env ORCHESTRATOR_ADDRESS=http://${servercontainername}:3000 \
+    --env ORCHESTRATOR_ADDRESS=http://${serverhostname}:3000 \
     --network=$dockernetworkname \
     --volume=./example/trkks-thesis-demo/:/app/example/trkks-thesis-demo/:ro \
     --volume=./example/trkks-thesis-demo/run.sh:/app/run.sh \
     $clientcontainername \
-    "/app/run.sh primary-camera-thingi alternate-camera-thingi"
+    "/app/run.sh $primarydevicename $altdevicename"
 
 echo
 echo The demo script is now done.
