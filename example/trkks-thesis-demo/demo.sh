@@ -16,13 +16,13 @@ wait_prompt() {
     echo ""
 }
 
-dockernetworkname="trkks-thesis-demo-net"
+# Values from the compose .yml:
+dockernetworkname="wasmiot-net"
 serverhostname="orchestrator"
 primarydevicename="primary-camera-thingi"
 altdevicename="alternate-camera-thingi"
+
 if [ $# -eq 2 ]; then
-    dockernetworkname="wasmiot-net"
-    serverhostname="wasmiot-orchestrator"
     # Set the alt camera to user argument.
     primarydevicename=$1
     altdevicename=$2
@@ -55,7 +55,7 @@ composepath="example/trkks-thesis-demo/docker-compose.yml"
 if [ $# -eq 2 ]; then
     # If running in LAN, use the appointed compose.
     composepath="docker-compose.lan.yml"
-    docker-compose -f $composepath up --build --detach
+    docker-compose -f $composepath up --build --detach --force-recreate
 else
     # Start containers to have interaction in the system.
     docker-compose -f $composepath --profile demo up --build --detach

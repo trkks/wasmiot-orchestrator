@@ -38,45 +38,49 @@ services:
       - ../device1/configs:/app/instance/configs
       - ../device1/modules:/app/instance/modules
       - ../device1/output:/app/instance/output
-      - type: bind
-        source: ../../wasmiot-supervisor
-        target: /app
 
   primary-camera:
     extends: device-base
     profiles:
       - demo
+      - device
     environment:
       - FLASK_APP=primary-camera-thingi
     ports:
       - 3001:5000
     # Needed for host camera access.
+    privileged: true
     volumes:
       - type: bind
-        # Use this for testing on a single host with only one webcam attached,
-        # mounting some fake webcam image for the device to use instead.
-    #    # NOTE: Do not enable privileged, which will use webcam anyway!
-    #    source: ./fakeWebcam.jpeg
-    #    target: /app/fakeWebcam.jpg
-    # Use these (mount AND privileged) when two cameras available on single
-    # host.
         source: /dev/video0
         target: /dev/video0
-    privileged: true
 
   alternate-camera:
     extends: device-base
     profiles:
       - demo
+      - device
     environment:
       - FLASK_APP=alternate-camera-thingi
     ports:
       - 3002:5000
+    # XXX Enable for second camera.
+    #privileged: true
     volumes:
       - type: bind
-        source: /dev/video2
+        # XXX Use this for testing on a single host with only one webcam attached,
+        # mounting some fake webcam image for the device to use instead.
+        # NOTE: Do not enable privileged, which will allow access to webcam anyway!
+        source: ./fakeWebcam.jpeg
+        target: /app/fakeWebcam.jpg
+        # XXX Use these (mount AND privileged) instead when two cameras
+        # available on single host.
+    #    source: /dev/video2
+    #    target: /dev/video2
+      # Prevent using video0, as privileged (probably) allows it by default.
+      - type: bind
+        source: /dev/null
         target: /dev/video0
-    privileged: true
 
 volumes:
   mongo-config:
@@ -84,4 +88,4 @@ volumes:
 
 networks:
   default:
-    name: trkks-thesis-demo-net
+    name: wasmiot-net

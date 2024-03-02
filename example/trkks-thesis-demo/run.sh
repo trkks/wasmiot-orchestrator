@@ -20,6 +20,7 @@ set -e
 
 # Refresh devices. Assuming 3 WASI in total and 2 of them cameras.
 orcli device rm
+sleep 1
 orcli device scan
 
 # Create modules.
