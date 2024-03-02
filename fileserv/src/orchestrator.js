@@ -267,8 +267,25 @@ class Orchestrator {
         return resolving ? solution : deploymentId;
     }
 
-    async deploy(deployment) {
+    async deploy(deployment, isRedeploying=false) {
         let deploymentSolution = deployment.solution;
+
+        /**
+         * Await all the device's promises found in elements of rs using
+         * Promise.all and map the responses back to the original keys.
+         */
+        async function awaitRequests(rs) {
+            return await Promise.all(
+                rs.map(async (x) => {
+                    for (let reqKey of Object.keys(x).filter(y => y !== "device")) {
+                        if (x[reqKey] instanceof Promise) {
+                            x[reqKey] = await x[reqKey];
+                        }
+                    }
+                    return x;
+                })
+            );
+        }
 
         let requests = [];
         for (let [deviceId, manifest] of Object.entries(deploymentSolution)) {
@@ -278,24 +295,48 @@ class Orchestrator {
                 throw new DeviceNotFound("", deviceId);
             }
 
-            // Start the deployment requests on each device.
-            requests.push([deviceId, this.messageDevice(device, "/deploy", manifest)]);
+            if (isRedeploying) {
+                // Because redeployment might happen mid-execution,
+                // only prepare the deployments at devices instead of assigning
+                // them immediately.
+                requests.push({
+                    device: device,
+                    prepare: this.messageDevice(device, "/deploy/prepare", manifest)
+                });
+            } else {
+                // Start the deployment requests on each device.
+                requests.push({
+                    device: device,
+                    deploy: this.messageDevice(device, "/deploy", manifest)
+                });
+            }
         }
 
-        // Return devices mapped to their awaited deployment responses.
-        let deploymentResponse = Object.fromEntries(await Promise.all(
-            requests.map(async ([deviceId, request]) => {
-                // Attach the device information to the response.
-                let response = await request;
-                return [deviceId, response];
-            })
-        ));
+        // Do the first batch of deployment requests.
+        requests = await awaitRequests(requests);
 
-        if (!deploymentResponse) {
-            throw new DeploymentFailed(deploymentResponse);
+        if (!requests) {
+            throw new DeploymentFailed(requests);
         }
 
-        return deploymentResponse;
+        if (isRedeploying) {
+            // Now that deployments are all prepared, put them into effect.
+            for (let x of requests) {
+                x.release = this.messageDevice(
+                    device,
+                    `/deploy/release/${deployment._id.toString()}`,
+                    {},
+                    method="PUT"
+                );
+            }
+            requests = await awaitRequests(requests);
+        }
+
+        // Remove unnecessary device info.
+        for (let x of requests) {
+            x.device = x.device.name;
+        }
+        return requests;
     }
 
     /**
@@ -434,7 +475,7 @@ class Orchestrator {
             .findOne({ _id: deployment._id});
 
         // Does not need to be sync.
-        this.deploy(newDeployment);
+        await this.deploy(newDeployment);
 
         // 4. Remove module from the device it has now migrated out of.
         //TODO
