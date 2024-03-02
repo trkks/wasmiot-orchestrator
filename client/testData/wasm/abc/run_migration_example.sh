@@ -3,6 +3,11 @@
 # This script expects there to be at least two devices available with WASI
 # interfaces that can be used to migrate a module back and forth.
 
+if ! command -v python3; then
+    echo "'python3' is required to run this script"
+    exit 1
+fi
+
 if [ $# -lt 1 ]; then
     echo "ARG1: name of first device required"
     exit 1
@@ -47,25 +52,31 @@ orcli deployment create $DEPLOYMENT_NAME \
 # Deploy.
 orcli deployment deploy $DEPLOYMENT_NAME
 
-# Execute.
-orcli execute $DEPLOYMENT_NAME
+function execresprint() {
+    echo
+    orchresponse=$(orcli execute $DEPLOYMENT_NAME)
+    resulturl=$(echo $orchresponse | python3 -c "import sys, json; s = ''.join(sys.stdin.readlines()); j = json.loads('{' + s.split('{', 1)[1]); print(j['url'])") || exit 1
+    resultstruct=$(curl $resulturl)
+    curl $(echo $resultstruct | python3 -c "import sys, json; j = json.loads(''.join(sys.stdin.readlines())); print(j['result'][1][0])")
+    echo
+    echo "---"
+}
 
-echo The execution result following above URL should contain name of $DEV1
+# Execute.
+execresprint
+echo The execution result above should contain name of $DEV1
 
 function migrate() {
     # TODO: Add migration command to orcli.
-    curl http://localhost:3000/migrate/$DEPLOYMENT_NAME/$MODULE_NAME -X POST
-    echo See above for results of migration.
+    curl --fail http://localhost:3000/migrate/$DEPLOYMENT_NAME/$MODULE_NAME -X POST || exit 1
 }
 
 migrate
-
-orcli execute $DEPLOYMENT_NAME
-echo Now the execution result following above URL should contain name of $DEV2
+execresprint
+echo Now the execution result above should contain name of $DEV2
 
 migrate
-
-orcli execute $DEPLOYMENT_NAME
-echo Once again the execution result following above URL should contain name of $DEV1.
-
+execresprint
+echo Once again the execution result above should contain name of $DEV1.
+echo
 echo DONE! This has demonstrated module migration between devices.

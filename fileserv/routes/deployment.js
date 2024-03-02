@@ -160,7 +160,7 @@ const tryDeploy = async (deploymentDoc, response) => {
                     .json(err);
                 break;
             default:
-                let unknownErr = ["unknown error while deploying", err];
+                let unknownErr = `unknown error while deploying ' ${err}'`;
                 response
                     .status(500)
                     .json(unknownErr);
