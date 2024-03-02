@@ -61,7 +61,7 @@ const migrate = async (request, response) => {
             .status(204)
             .send();
     } catch (e) {
-        const err = new utils.Error(`migration deployment-${deployment.name}:module-${migratingModule.name} => device-${sourceDeviceId.name} failed`, e);
+        const err = new utils.Error(`migration deployment-${deployment.name}:module-${migratingModule.name} => device-${sourceDeviceId} failed`, e);
         console.error(err);
         console.error(e.stack || "no error stack");
         response

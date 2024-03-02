@@ -280,6 +280,7 @@ class Orchestrator {
                     for (let reqKey of Object.keys(x).filter(y => y !== "device")) {
                         if (x[reqKey] instanceof Promise) {
                             x[reqKey] = await x[reqKey];
+                            console.log(`Device '${x.device.name}' responded to '${reqKey}' with:`, x[reqKey])
                         }
                     }
                     return x;
