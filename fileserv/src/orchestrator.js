@@ -323,10 +323,10 @@ class Orchestrator {
             // Now that deployments are all prepared, put them into effect.
             for (let x of requests) {
                 x.release = this.messageDevice(
-                    device,
+                    x.device,
                     `/deploy/release/${deployment._id.toString()}`,
                     {},
-                    method="PUT"
+                    "PUT",
                 );
             }
             requests = await awaitRequests(requests);
@@ -475,7 +475,7 @@ class Orchestrator {
             .findOne({ _id: deployment._id});
 
         // Does not need to be sync.
-        await this.deploy(newDeployment);
+        await this.deploy(newDeployment, true);
 
         // 4. Remove module from the device it has now migrated out of.
         //TODO
