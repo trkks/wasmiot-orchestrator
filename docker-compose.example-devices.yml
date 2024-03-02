@@ -17,8 +17,8 @@ services:
       - ./example/device1/modules:/app/instance/modules
       - ./example/device1/output:/app/instance/output
       - type: bind
-        source: ./wasmiot-supervisor
-        target: /app
+        source: ./wasmiot-supervisor/host_app
+        target: /app/host_app
 
   adequate-webcam-laptop:
     extends: device-base
