@@ -34,6 +34,7 @@ services:
       context: ../../wasmiot-supervisor
     environment:
       - DEVICE_TYPE=camera-thingi
+      - SIMULATED_LATENCY_SECS=${SIMULATED_LATENCY_SECS:-1}
     volumes:
       - ../device1/configs:/app/instance/configs
       - ../device1/modules:/app/instance/modules
