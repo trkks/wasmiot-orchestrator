@@ -27,7 +27,6 @@ const UTILS_PATH = path.join(__dirname, "./utils.js");
 // NOTE: "webthing" is what the JS-library returns as type for Flask-host's
 // "_webthing._tcp.local.", soooo search for those.
 const DEVICE_TYPE = "webthing";
-// TODO: Use dot after "local" or no?
 const DEVICE_DESC_ROUTE = "/.well-known/wasmiot-device-description";
 const DEVICE_WOT_ROUTE = "/.well-known/wot-thing-description";
 const DEVICE_HEALTH_ROUTE = "/health";
@@ -36,7 +35,8 @@ const FILE_TYPES = [
     "image/png",
     "image/jpeg",
     "image/jpg",
-    "application/octet-stream"
+    "application/octet-stream",
+    "text/html",
 ];
 
 /**
@@ -69,4 +69,5 @@ module.exports = {
     UTILS_PATH,
     FILE_TYPES,
     WASMIOT_INIT_FUNCTION_NAME,
+    EMPTY_WASM_FILEPATH: "./files/empty.wasm",
 };

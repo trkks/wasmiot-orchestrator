@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <script>
+            function setTime(time) {
+                const resourceUrl = "./modules/timem/" + time;
+                const element = document.querySelector("#" + time);
+                fetch(resourceUrl)
+                    .then(r1 => r1.json())
+                    .then(json1 => {
+                        const resultUrl = json1.resultUrl;
+                        fetch(resultUrl)
+                            .then(r2 => r2.json())
+                            .then(json2 => {
+                                element.textContent = json2.result[0] || JSON.stringify(json2.result);
+                            });
+                    });
+            }
+            window.onload = () => {
+                document.querySelector("#refresh-button").addEventListener("click", () => {
+                    fetch("./modules/timem/now").then(_ => {
+                        setTime("seconds");
+                        setTime("minutes");
+                        setTime("hours");
+                    });
+                });
+            };
+        </script>
+    </head>
+    <body>
+        <div>
+            <h2>Server time in different units:</h2>
+            <table>
+                <tr>
+                    <th>Seconds</th>
+                    <td id="seconds"></td>
+                </tr>
+                <tr>
+                    <th>Minutes</th>
+                    <td id="minutes"></td>
+                </tr>
+                <tr>
+                    <th>Hours</th>
+                    <td id="hours"></td>
+                </tr>
+            </table>
+        </div>
+        <div>
+            <input id="refresh-button" type="button" value="Click me to refresh the time" />
+        </div>
+    </body>
+</html>

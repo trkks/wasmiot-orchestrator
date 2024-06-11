@@ -1,0 +1,39 @@
+# README: This is expected to be used along with the orchestrator devcontainer
+# (i.e., with wasmio-net) to create two devices that support the abc-module.
+
+version: '3.4'
+
+services:
+  device-base:
+    profiles:
+      - ABSTRACT_BASE_HACK_DO_NOT_USE
+    build:
+      context: ../../../../wasmiot-supervisor
+    volumes:
+      - ../../../../example/device1/configs:/app/instance/configs
+      - ../../../../example/device1/modules:/app/instance/modules
+      - ../../../../example/device1/output:/app/instance/output
+ 
+  first-device:
+    extends: device-base
+    profiles:
+      - device
+    environment:
+      - DEVICE_TYPE=wasi-thingi
+      - FLASK_APP=first-thingi
+    ports:
+      - 3002:5000
+
+  second-device:
+    extends: device-base
+    profiles:
+      - device
+    environment:
+      - DEVICE_TYPE=wasi-thingi
+      - FLASK_APP=second-thingi
+    ports:
+      - 3003:5000
+
+networks:
+  default:
+    name: wasmiot-net

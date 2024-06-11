@@ -46,7 +46,6 @@ paths:
               type: object
               required:
                 - name
-                - wasm
               properties:
                 name:
                   type: string
@@ -107,6 +106,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+    post: 
+      description: Update a module with a new binary
+      requestBody:
+        description: The .wasm binary to base the module on
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                wasm:
+                  type: string
+                  format: binary
+
+      responses:
+        '200':
+          description: The module was updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      description: Delete this module
+      responses:
+        '204':
+          description: The module will be deleted
+
 
   /file/module/{module_id}/upload:
     parameters:
@@ -237,8 +274,8 @@ paths:
       description: Create a new deployment
       requestBody:
         description: |
-          Function type information and files or 'mounts' to attach to the
-          module
+          Information about preferred resource pairings and various files or
+          'mounts' required by modules
         required: true
         content:
           application/json:
@@ -359,7 +396,7 @@ paths:
                 $ref: "#/components/schemas/Error"
         '404':
           description: Deployment not found
-      
+
 
 components:
   schemas:
@@ -408,3 +445,5 @@ components:
       $ref: "./schemas/ModuleDescription.yml"
     PrimitiveType:
       $ref: "./schemas/PrimitiveType.yml"
+    "OrderedResources":
+      $ref: "./schemas/OrderedResources.yml"

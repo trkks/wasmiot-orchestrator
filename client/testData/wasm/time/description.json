@@ -1,0 +1,33 @@
+{
+    "index": {
+        "method": "GET",
+        "mounts": [
+            {
+                "name": "deploy-index.html",
+                "mediaType": "text/html",
+                "stage": "deployment"
+            },
+            {
+                "name": "index.html",
+                "mediaType": "text/html",
+                "stage": "output"
+            }
+         ]
+    },
+    "now": {
+        "method": "POST",
+        "output": "integer"
+    },
+    "seconds": {
+        "method": "GET",
+        "output": "integer"
+    },
+    "minutes": {
+        "method": "GET",
+        "output": "integer"
+    },
+    "hours": {
+        "method": "GET",
+        "output": "integer"
+    }
+}

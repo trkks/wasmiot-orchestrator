@@ -14,7 +14,8 @@ program
     .option("-p --path [mount-path...]", "Path of a file as input")
     .action(async (deployment, json, options, _) => {
         const args = json ? JSON.parse(json) : {};
-        console.log("JSON args given:", args);
+        // Using error-log so it doesn't mix in with stdout.
+        console.error("JSON args given:", args);
 
         const mounts = await getMounts(options.path, options.mount);
 

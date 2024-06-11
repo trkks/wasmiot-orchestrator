@@ -57,6 +57,7 @@ async function setRoutes(routeDependencies) {
     app.use("/file/module",   routes.modules);
     app.use("/file/manifest", routes.deployment);
     app.use("/execute",       routes.execution);
+    app.use("/migrate",       routes.migration);
     app.use("",               routes.coreServicesRouter);
 
     // NOTE: This is for testing if for example an image file needs to be available

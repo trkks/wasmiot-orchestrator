@@ -1,9 +1,7 @@
 const { readFile } = require("node:fs/promises");
 const express = require("express");
 
-const { ObjectId } = require("mongodb");
-
-const { MODULE_DIR, WASMIOT_INIT_FUNCTION_NAME } = require("../constants.js");
+const { MODULE_DIR, WASMIOT_INIT_FUNCTION_NAME, EMPTY_WASM_FILEPATH } = require("../constants.js");
 const utils = require("../utils.js");
 
 
@@ -17,60 +15,30 @@ function setDatabase(db) {
     deviceCollection = db.collection("device");
 }
 
-class ModuleCreated {
-    constructor(id) {
-        this.id = id;
-    }
-}
-
-class ModuleDescribed {
-    constructor(description) {
-        this.description = description;
-    }
-}
-
-class WasmFileUpload {
-    constructor(updateObj) {
-        this.type = "wasm";
-        this.updateObj = updateObj;
-    }
-}
-
-class DataFileUpload {
-    constructor(type, updateObj) {
-        this.type = type;
-        this.updateObj = updateObj;
-    }
-}
 
 /**
- * Return a filter for querying a module based on a string value x.
- * @param {*} x string
- */
-const moduleFilter = (x) => {
-    let filter = {};
-    try {
-        filter._id = ObjectId(x);
-    } catch (e) {
-        console.error(`Passed in module-ID '${x}' not compatible as ObjectID. Using it as 'name' instead`);
-        filter.name = x;
-    }
-    return filter;
-};
-
-/**
- * Implements the logic for creating a new module.
+ * Implements the logic for creating a new module or updating an existing one
+ * with a binary.
  * @returns Promise about interpreting the .wasm binary and attaching it to
  * created module resource. On success it results to the added module's ID.
  */
-const createNewModule = async (metadata, files) => {
+const createNewModule = async (metadata, files, existingModuleId) => {
     // Create the database entry.
-    let moduleId = (await moduleCollection.insertOne(metadata)).insertedId;
+    let moduleId = existingModuleId || (await moduleCollection.insertOne(metadata)).insertedId;
 
-    // Attach the Wasm binary.
-    return addModuleBinary({_id: moduleId}, files[0]).then(() => moduleId);
-};
-
+    // Attach the Wasm binary. NOTE: If such a file is not provided, save an
+    // empty default implementation.
+    let mainWasmFile = (files && files.length)
+        ? files[0]
+        : {
+            fieldname: "wasm",
+            originalname: `${metadata.name}.wasm`,
+            filename: "empty.wasm",
+            path: EMPTY_WASM_FILEPATH,
+            mimetype: "application/wasm",
+        };
+    await addModuleBinary({_id: moduleId}, mainWasmFile);
+    return moduleId; };
 /**
  * Implements the logic for describing an existing module.
  * @param {*} moduleId
@@ -83,30 +51,32 @@ const describeExistingModule = async (moduleId, descriptionManifest, files) => {
     // Prepare description for the module based on given info for functions
     // (params & outputs) and files (mounts).
     let functions = {};
-        for (let [funcName, func] of Object.entries(descriptionManifest).filter(x => typeof x[1] === "object")) {
+    for (let [funcName, func] of Object.entries(descriptionManifest).filter(x => typeof x[1] === "object")) {
         // The function parameters might be in a list or be in the form of 'paramN'
         // where N is the order of the parameter.
-        parameters = func.parameters || Object.entries(func)
+        const parameters = func.parameters || Object.entries(func)
                 .filter(([k, _v]) => k.startsWith("param"))
                 .map(([k, v]) => ({ name: k, type: v }));
+
+        // Insert matching media types.
+        // NOTE: Because the module description file already has the
+        // mounts' media types, the file __media types received in request are
+        // ignored__.
+        const mountsWithMediaTypes = {};
+        for (let { name, stage, mediaType } of Object.values(func.mounts || {})) {
+            // If no file is given the media type is set to default.
+            const matchedFile = files.find(x => x.fieldname === name);
+            const mount = {
+                stage,
+                mediaType: matchedFile ? mediaType : "application/octet-stream"
+            };
+            mountsWithMediaTypes[name] = mount;
+        }
 
         functions[funcName] = {
             method: func.method.toLowerCase(),
             parameters: parameters,
-            mounts: "mounts" in func
-                ? Object.fromEntries(
-                    Object.values(func.mounts)
-                        // Map files by their form fieldname to this function's mount.
-                        .map(({ name, stage }) => ([ name, {
-                            // If no file is given the media type cannot be
-                            // determined and is set to default.
-                            mediaType: (
-                                files.find(x => x.fieldname === name)?.mimetype
-                                || "application/octet-stream"
-                            ),
-                            stage: stage,
-                        }]))
-                ) : {},
+            mounts: mountsWithMediaTypes,
             outputType:
                 // An output file takes priority over any other output type.
                 func.mounts?.find(({ stage }) => stage === "output")?.mediaType
@@ -114,11 +84,12 @@ const describeExistingModule = async (moduleId, descriptionManifest, files) => {
         };
     }
 
-    // Check that the described mounts were actually uploaded.
+    // Check that the deployment files were actually uploaded.
     let missingFiles = [];
     for (let [funcName, func] of Object.entries(functions)) {
-        for (let [mountName, mount] of Object.entries(func.mounts)) {
-            if (mount.stage == "deployment" && !(files.find(x => x.fieldname === mountName))) {
+        for (let [mountName, { stage }] of Object.entries(func.mounts || {})) {
+            if (stage === "deployment"
+                && !(files.find(x => x.fieldname === mountName))) {
                 missingFiles.push([funcName, mountName]);
             }
         }
@@ -176,7 +147,7 @@ const getModuleBy = async (moduleId) => {
 
     let filter = {};
     if (!getAllModules) {
-        filter = moduleFilter(moduleId);
+        filter = utils.nameOrIdFilter(moduleId);
     }
 
     let matches;
@@ -233,7 +204,7 @@ const getModule = (justDescription) => (async (request, response) => {
  */
 const getModuleFile = async (request, response) => {
     let doc = await moduleCollection.findOne(
-        moduleFilter(request.params.moduleId)
+        utils.nameOrIdFilter(request.params.moduleId)
     );
     let filename = request.params.filename;
     if (doc) {
@@ -262,15 +233,15 @@ const getModuleFile = async (request, response) => {
 }
 
 /**
- * Parse metadata from a Wasm-binary to database along with its name.
+ * Create (or update) a module based on a .wasm binary.
  */
-const createModule = async (request, response) => {
+const handleModuleBinary = async (request, response) => {
     try {
-        let result = await createNewModule(request.body, request.files);
+        let result = await createNewModule(request.body, request.files, request.params.moduleId);
 
         response
             .status(201)
-            .json(new ModuleCreated(result));
+            .json({ id: result });
     } catch (e) {
         if (e === "exists") {
             response.status(400).json(new utils.Error(undefined, e));
@@ -318,11 +289,11 @@ const getFileUpdate = async (file) => {
             console.error(...err);
             throw new utils.Error(...err);
         }
-        result = new WasmFileUpload(updateObj);
+        result = { type: "wasm", updateObj }
     } else {
         // All other filetypes are to be "mounted".
         updateObj[file.fieldname] = updateStruct;
-        result = new DataFileUpload(fileExtension, updateObj);
+        result = { type: fileExtension, updateObj };
     }
 
     return result;
@@ -401,7 +372,7 @@ const describeModule = async (request, response) => {
             request.files
         );
 
-        response.json(new ModuleDescribed(description));
+        response.json({ description });
     } catch (e) {
         let err;
         switch (e) {
@@ -443,7 +414,7 @@ const describeModule = async (request, response) => {
  */
 const deleteModule = async (request, response) => {
     let deleteAllModules = request.params.moduleId === undefined;
-    let filter = deleteAllModules ? {} : moduleFilter(request.params.moduleId);
+    let filter = deleteAllModules ? {} : utils.nameOrIdFilter(request.params.moduleId);
     let { deletedCount } = await moduleCollection.deleteMany(filter);
     if (deleteAllModules) {
         response.json({ deletedCount: deletedCount });
@@ -497,9 +468,9 @@ async function notifyModuleFileUpdate(moduleId) {
     // Find devices that have the module deployed and the matching deployment manifests.
     let deployments = await (await deploymentCollection.find()).toArray();
     let devicesToUpdatedManifests = {};
-    for (let deployment of deployments.filter(x => x.fullManifest)) {
+    for (let deployment of deployments.filter(x => x.solution)) {
         // Unpack the mapping of device-id to manifest sent to it.
-        let [deviceId, manifest] = Object.entries(deployment.fullManifest)[0];
+        let [deviceId, manifest] = Object.entries(deployment.solution)[0];
 
         if (manifest.modules.some(x => x.id === moduleId.toString())) {
             if (devicesToUpdatedManifests[deviceId] === undefined) {
@@ -530,7 +501,7 @@ async function notifyModuleFileUpdate(moduleId) {
 * @param {*} fields To add to the matched modules.
 */
 async function updateModule(id, fields) {
-    let { matchedCount } = await moduleCollection.updateMany(moduleFilter(id), { $set: fields }, { upsert: true });
+    let { matchedCount } = await moduleCollection.updateMany(utils.nameOrIdFilter(id), { $set: fields }, { upsert: true });
     if (matchedCount === 0) {
         throw "no module matched the filter";
     }
@@ -548,11 +519,11 @@ const fileUpload = utils.fileUpload(MODULE_DIR, "module");
 
 const router = express.Router();
 router.post(
-    "/",
+    "/:moduleId?",
     fileUpload,
     // A .wasm binary is required.
     utils.validateFileFormSubmission,
-    createModule,
+    handleModuleBinary,
 );
 router.post(
     "/:moduleId/upload",

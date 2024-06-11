@@ -24,6 +24,8 @@ const fileUpload = utils.fileUpload("./files/exec/core/datalist");
 const initData = async () => {
     let { insertedId } = await collection.insertOne({ history: [] });
     let docId = insertedId.toString();
+    // TODO: Save the ID per deployment instead of this one global collection
+    // for everyone.
     await writeFile("./files/exec/core/datalist/id", docId, encoding="utf-8");
 };
 
@@ -68,12 +70,13 @@ const pushData = async (request, response) => {
     // but this implementation aims to emulate current supervisor behavior,
     // where any other than primitive integer-data is passed as a file.
     let id = await readFile("./files/exec/core/datalist/id", encoding="utf-8");
-    let entry = request.files
-        ? await readFile(
-            request.files.find(x => x.fieldname == "entry").path,
-            encoding="utf-8"
-        )
+    let nonPrimitiveEntry = request.files && request.files.find(x => x.fieldname == "entry");
+    let entry = nonPrimitiveEntry
+        ? await readFile(nonPrimitiveEntry.path, encoding="utf-8")
         : request.query.param0;
+    // TODO: Based on received media type, parse the entry accordingly (e.g.,
+    // integer, float, string, boolean ...).
+    entry = Number(entry);
     await collection.updateOne({ _id: ObjectId(id) }, { $push: { history: entry } });
 
     // TODO: Notify subscribers about the new entry.
@@ -112,7 +115,7 @@ const deleteData = async (request, response) => {
 
 const FUNCTION_DESCRIPTIONS = {
     /**
-     * Save the 'entry' to the document identified by 'id' and then forward
+     * Save the 'entry' to the document identified by 'id' and then TODO forward
      * the 'entry' to registered listeners.
      */
     push: {
@@ -120,7 +123,7 @@ const FUNCTION_DESCRIPTIONS = {
         // out.
         parameters: [{ name: "param0", type: "integer" }],
         method: "PUT",
-        output: "integer", // Which index the entry was stored at.
+        output: "application/json", // Link to the matching GET path.
         mounts: [
             {
                 name: "id",
@@ -150,7 +153,7 @@ const FUNCTION_DESCRIPTIONS = {
             {
                 name: "entry",
                 mediaType: "application/octet-stream",
-                stage: "output",
+                stage: "output"
             }
         ],
         middlewares: [fileUpload, getData]
@@ -158,12 +161,11 @@ const FUNCTION_DESCRIPTIONS = {
     delete: {
         parameters: [],
         method: "DELETE",
-        output: "application/octet-stream",
         mounts: [
             {
                 name: "id",
                 mediaType: "application/octet-stream",
-                stage: "execution",
+                stage: "execution"
             }
         ],
         middlewares: [fileUpload, deleteData]
@@ -184,8 +186,10 @@ FUNCTION_DESCRIPTIONS[WASMIOT_INIT_FUNCTION_NAME] = {
         }
     ],
     // This field is special for init-functions.
-    init: initData
+    init: initData,
 };
+
+
 
 const MODULE_NAME = "Datalist";
 
@@ -193,5 +197,6 @@ const MODULE_NAME = "Datalist";
 module.exports = {
     MODULE_NAME,
     FUNCTION_DESCRIPTIONS,
-    setDatabase
+    setDatabase,
+    EXPORTS: Object.entries(FUNCTION_DESCRIPTIONS).map(([n, x]) => ({name: n, parameterCount: x.parameters.length})),
 };

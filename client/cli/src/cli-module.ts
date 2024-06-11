@@ -13,15 +13,43 @@ program
     .command("create")
     .description("Create a new module")
     .argument("<module-name-string>", "Name to give to module")
-    .argument("<input-file>", "Path to module's .wasm file")
+    .argument("[input-file]", "Path to module's .wasm file")
     .action(async (name, wasmPath) => {
-        const wasm = await readFile(wasmPath);
-        const wasmBlob = new Blob([wasm], { type: "application/wasm" });
-        const result = await client.default.postFileModule({
-            name, wasm: wasmBlob
-        });
+        const input = {
+            name,
+            wasm: (
+                wasmPath
+                ? new Blob(
+                    [await readFile(wasmPath)],
+                    { type: "application/wasm" }
+                )
+                : undefined
+            )
+        };
+
+        const result = await client.default.postFileModule(input);
         console.log(JSON.stringify(result, null, 4));
     });
+
+
+program
+    .command("update")
+    .description("Update the binary of a module")
+    .argument("<module-id-string>", "ID of the module")
+    .argument("<input-file>", "Path to a new .wasm file")
+    .action(async (id, wasmPath) => {
+        const result = await client.default.postFileModule1(
+            id,
+            {
+                wasm: new Blob(
+                    [await readFile(wasmPath)],
+                    { type: "application/wasm" }
+                )
+            }
+        );
+        console.log(JSON.stringify(result, null, 4));
+    });
+
 
 program
     .command("desc")
@@ -64,9 +92,16 @@ program
 
 program
     .command("rm")
-    .description("Remove all modules")
-    .action(async () => {
-        const result = await client.default.deleteFileModule();
+    .description("Remove modules")
+    .argument("[module-id-string]", "ID of the module to remove")
+    .action(async (id) => {
+        let result;
+        if (id) {
+            await client.default.deleteFileModule1(id);
+            result = id;
+        } else {
+            result = await client.default.deleteFileModule();
+        }
 
         console.log(JSON.stringify(result, null, 4));
     })

@@ -16,20 +16,56 @@ function setOrchestrator(orch) {
     orchestrator = orch;
 }
 
+
+const validateManifestSequence = (mani) => {
+    const sequence = mani.sequence;
+    if (!(typeof sequence === "object" && sequence instanceof Array)) {
+        throw "manifest's operation sequence must be a list";
+    }
+
+    for (let node of sequence) {
+        if (!(typeof node.module === "string"))
+            { throw "manifest node must have a module"; }
+        if (!(typeof node.func === "string"))
+            { throw "manifest node must have a function"; }
+    }
+};
+
+
+const validateManifestMainScript = (mani) => {
+    if (!(typeof mani.resourcePairings === "object"))
+        { throw "manifest must have some resources selected"; }
+
+    const mainScript = mani.mainScript;
+    if (!(typeof mainScript.module === "string"))
+        { throw "manifest must have a name of main module"; }
+    if (!(typeof mainScript.function === "string"))
+        { throw "manifest must have a name of main function"; }
+};
+
+
 /**
  * Validate manifest (this is static typing manually).
  */
 const validateManifest = (mani) => {
     if (!(typeof mani.name === "string"))
         { throw "manifest must have a name"; }
-    if (!(typeof mani.sequence === "object" && mani.sequence instanceof Array))
-        { throw "manifest must have a sequence of operations"; }
-    for (let node of mani.sequence) {
-        if (!(typeof node.module === "string"))
-            { throw "manifest node must have a module"; }
-        if (!(typeof node.func === "string"))
-            { throw "manifest node must have a function"; }
+
+    // Check manifests "execution model".
+    const EXECUTIONMODELS = [
+        // Sequence means piping outputs of functions as the next one's input.
+        ["sequence", validateManifestSequence],
+        // Main script means that there is some file that when run
+        // takes control of the execution of other functions.
+        ["mainScript", validateManifestMainScript],
+    ];
+    for (const [s, f] of EXECUTIONMODELS) {
+        if (mani[s]) {
+            f(mani)
+        }
     }
+    if (EXECUTIONMODELS.filter(([s, _]) => mani[s]).length !== 1)
+        { throw "manifest must have one and only one execution model"; }
 }
 
 /**
@@ -123,7 +159,7 @@ const tryDeploy = async (deploymentDoc, response) => {
                     .json(err);
                 break;
             default:
-                let unknownErr = ["unknown error while deploying", err];
+                let unknownErr = `unknown error while deploying ' ${err}'`;
                 response
                     .status(500)
                     .json(unknownErr);
@@ -137,13 +173,7 @@ const tryDeploy = async (deploymentDoc, response) => {
  *  deployment.
  */
 const deploy = async (request, response) => {
-    let filter = {};
-    try {
-        filter._id = ObjectId(request.params.deploymentId);
-    } catch (e) {
-        console.error(`Passed in deployment-ID '${request.params.deploymentId}' not compatible as ObjectID. Using it as 'name' instead`);
-        filter.name = request.params.deploymentId;
-    }
+    let filter = utils.nameOrIdFilter(request.params.deploymentId)
 
     let deploymentDoc = await deploymentCollection.findOne(filter);
     if (!deploymentDoc) {
@@ -187,7 +217,7 @@ const updateDeployment = async (request, response) => {
     try {
         let newDeployment = request.body;
         newDeployment._id = oldDeployment._id;
-        updatedDeployment = await orchestrator.solve(newDeployment, true);
+        updatedDeployment = await orchestrator.solve(newDeployment, {resolving: true});
     } catch (err) {
         errorMsg = "Failed updating manifest for deployment" + err;
 

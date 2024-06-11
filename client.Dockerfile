@@ -4,7 +4,7 @@
 # The client can then be used by running the container passing arguments to the
 # CLI client program.
 
-FROM node:latest
+FROM node:18-bullseye
 
 WORKDIR /app
 COPY package.json package.json
@@ -26,4 +26,4 @@ RUN npm run generate
 # Compile the Typescript implementation into Javascript.
 RUN npm run compile
 
-ENTRYPOINT [ "npm", "run", "--", "client" ]
+ENTRYPOINT [ "/bin/bash", "-c" ]

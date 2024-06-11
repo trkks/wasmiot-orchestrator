@@ -1,8 +1,10 @@
 // Hack to make this file work in both Node.js and browser without erroring.
 let runningInBrowser = false;
 let multer = undefined;
+let ObjectId = undefined;
 try {
     multer = require("multer");
+    ObjectId = require("mongodb").ObjectId;
 } catch (e) {
     console.log("Importing with 'require' failed; assuming we're in a browser");
     runningInBrowser = true;
@@ -113,14 +115,29 @@ const fileUpload =
  * @returns { url, path, method, operationObj }
  */
 function getStartEndpoint(deployment) {
-    let startStep = deployment.sequence[0];
+    let startStep;
+    if (deployment.sequence)
+        { startStep = deployment.resourcePairings[deployment.sequence[0]]; }
+    else if (deployment.mainScript) {
+        // Select the first match that can run the main script.
+        const [device, depl] = Object.entries(deployment.solution)
+            .find(([_, x]) => x.instructions.main);
+
+        const module = depl.modules.find(x => x.name === depl.instructions.main).id;
+        const func = depl.instructions.start;
+        startStep = {device, module, func};
+    }
+    else {
+        throw "deployment manifest execution model not defined";
+    }
+
     let modId = startStep.module;
     let modName = deployment
-        .fullManifest[startStep.device]
+        .solution[startStep.device]
         .modules
         .find(x => x.id.toString() === modId.toString()).name;
     let startEndpoint = deployment
-        .fullManifest[startStep.device]
+        .solution[startStep.device]
         .endpoints[modName][startStep.func];
 
     // Change the string url to an object.
@@ -204,10 +221,10 @@ const moduleEndpointDescriptions = (modulee, functionDescriptions) => {
         };
         // Inside the `requestBody`-field, describe mounts that are used as
         // "input" to functions.
-        let mounts = Object.entries(func.mounts).filter(x => x[1].stage !== "output");
-        if (mounts.length > 0) {
+        let mountInfos = Object.entries(func.mounts).filter(x => x[1].stage !== "output");
+        if (mountInfos.length > 0) {
             let mountEntries = Object.fromEntries(
-                    mounts.map(([path, _mount]) => [
+                mountInfos.map(([path, _mount]) => [
                         path,
                         {
                             type: "string",
@@ -216,7 +233,7 @@ const moduleEndpointDescriptions = (modulee, functionDescriptions) => {
                     ])
             );
             let mountEncodings = Object.fromEntries(
-                mounts.map(([path, mount]) => [path, { contentType: mount.mediaType }])
+                mountInfos.map(([path, mount]) => [path, { contentType: mount.mediaType }])
             );
             let content = {
                 "multipart/form-data": {
@@ -318,6 +335,25 @@ async function apiCall(url, method, body, headers={"Content-Type": "application/
     return result;
 }
 
+/**
+ * Return a database filter for querying documents based on value x.
+ * @param {string} x Document name or ID.
+ */
+const nameOrIdFilter = (x) => {
+    let filter = {
+        $or: [
+            { name: x },
+        ]
+    };
+    try {
+        const idFilter = { _id: ObjectId(x) };
+        filter["$or"].push(idFilter);
+    } catch (e) {
+        console.error(`Passed in document ID '${x}' not compatible as ObjectID. Creating query with only 'name=${x}' instead`);
+    }
+    return filter;
+};
+
 if (!runningInBrowser) {
     module.exports = {
         supervisorExecutionPath,
@@ -329,5 +365,6 @@ if (!runningInBrowser) {
         getStartEndpoint,
         moduleEndpointDescriptions,
         apiCall,
+        nameOrIdFilter,
     };
 }

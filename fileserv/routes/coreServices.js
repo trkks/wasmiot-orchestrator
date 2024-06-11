@@ -16,10 +16,16 @@ const COLLECTION_NAME = "module";
 const {
     FUNCTION_DESCRIPTIONS: DATALIST_FUNCTION_DESCRIPTIONS,
     MODULE_NAME: DATALIST_MODULE_NAME,
+    EXPORTS: DATALIST_EXPORTS,
     setDatabase: setDatalistDatabase,
     MODULE_NAME
 } = require("./datalist.js");
-const { DEVICE_DESC_ROUTE, DEVICE_HEALTH_ROUTE, WASMIOT_INIT_FUNCTION_NAME } = require("../constants.js");
+const {
+    DEVICE_DESC_ROUTE,
+    DEVICE_HEALTH_ROUTE,
+    WASMIOT_INIT_FUNCTION_NAME,
+    EMPTY_WASM_FILEPATH
+} = require("../constants.js");
 const { ORCHESTRATOR_WASMIOT_DEVICE_DESCRIPTION } = require("../src/orchestrator.js");
 const { createNewModule, describeExistingModule } = require("../routes/module.js");
 const { ObjectId } = require("mongodb");
@@ -44,7 +50,7 @@ async function initializeCoreServices() {
     // Create a minimal "empty" .wasm module for sending to the module-creation
     // "pipeline".
     let emptyWasmBytes = new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0 ,0]);
-    await writeFile("./files/empty.wasm", emptyWasmBytes);
+    await writeFile(EMPTY_WASM_FILEPATH, emptyWasmBytes);
 
     // Delete and refresh all core services at initialization.
     let coreServiceNames = [coreNameFor(DATALIST_MODULE_NAME)];
@@ -59,19 +65,17 @@ async function initializeCoreServices() {
 
     // Initialize the datalist "module".
     let metadata = {
-        name: coreNameFor(DATALIST_MODULE_NAME)
+        name: coreNameFor(DATALIST_MODULE_NAME),
     };
     // Fake the object that multer would create off of uploaded files.
-    let files = [
-        {
-            fieldname: "wasm",
-            originalname: "datalist.wasm",
-            filename: "empty.wasm",
-            path: "./files/empty.wasm",
-            mimetype: "application/wasm",
-        }
-    ];
-    let id = await createNewModule(metadata, files);
+    let id = await createNewModule(metadata);
+
+    // NOTE: Exports need to be added here manually, since the core services
+    // don't have equivalent Wasm binaries. Some cleaner alternative would be
+    // to refactor module creation to not rely on interpreting .wasm for its
+    // exports.
+    await database.collection("module").updateOne({_id: ObjectId(id)}, { $set: { exports: DATALIST_EXPORTS } });
+
     // Describe the datalist "module".
     try {
         await describeExistingModule(id, DATALIST_FUNCTION_DESCRIPTIONS, []);

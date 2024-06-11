@@ -1,0 +1,21 @@
+description: Ordered list of pairings mapping resources to each other. Also
+  works as the description to an execution sequence.
+type: array
+items:
+  type: object
+  required:
+    - module
+  properties:
+    device:
+      description: |
+        The ID of the device that the workload should be deployed to.
+      type: string
+    module:
+      description: A module ID
+      type: string
+    func:
+      description: |
+        The name of a function that should be called on the node. The function
+        must be exported by the module.
+      type: string
+

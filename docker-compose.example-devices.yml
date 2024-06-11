@@ -7,16 +7,15 @@ services:
   #
   device-base:
     profiles:
-      # NOTE: This makes it so that the service can be extended and the
-      # ::OVERRIDE::-marked settings overridden without starting this service
-      # during `docker compose up`. The "inherited" services need to be started
-      # on their own though (separate profile)...
       - ABSTRACT_BASE_HACK_DO_NOT_USE
-    image: ghcr.io/liquidai-project/wasmiot-supervisor
-    # ports:
-    #   # 5000 is the default Flask-port that is probably used.
-    #   - 0:5000 # ::OVERRIDE::
+    build:
+      context: ./wasmiot-supervisor
+    environment:
+      - DEVICE_TYPE=example-thingi
     volumes:
+      - ./example/device1/configs:/app/instance/configs
+      - ./example/device1/modules:/app/instance/modules
+      - ./example/device1/output:/app/instance/output
       - type: bind
         source: ./wasmiot-supervisor/host_app
         target: /app/host_app
@@ -26,8 +25,8 @@ services:
     profiles:
       - device
     environment:
-      - DEVICE_TYPE='webcam-laptop'
-      - FLASK_APP='adequate-webcam-laptop'
+      - DEVICE_TYPE=webcam-laptop
+      - FLASK_APP=adequate-webcam-laptop
     ports:
       - 3001:5000
     # NOTE: This is needed to access webcam of Linux hosts.
@@ -52,8 +51,8 @@ services:
     profiles:
       - device
     environment:
-      - DEVICE_TYPE='webcam-laptop'
-      - FLASK_APP='lousy-webcam-laptop'
+      - DEVICE_TYPE=webcam-laptop
+      - FLASK_APP=lousy-webcam-laptop
     ports:
       - 3002:5000
     # NOTE: This is needed to access webcam of Linux hosts.
@@ -76,8 +75,8 @@ services:
     profiles:
       - device
     environment:
-      - DEVICE_TYPE='temperature-sensor'
-      - FLASK_APP='basic-temperature-sensor'
+      - DEVICE_TYPE=temperature-sensor
+      - FLASK_APP=basic-temperature-sensor
     ports:
       - 3003:5000
     volumes:

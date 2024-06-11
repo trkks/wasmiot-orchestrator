@@ -1,5 +1,15 @@
 # This script demonstrates the whole set and execution of the ICWE23 demo
 # scenario using the orchestrator CLI client (instead of web-GUI).
+#
+# The WebAssembly modules tested with are found in wasmiot-modules repo commit
+# 6ade03d11d71c001bd839929a445db77417ad8f3 .
+#
+# NOTE: This script is supposed to run from project root, NOT e.g. from the
+# example/ dir.
+#
+# NOTENOTE: Read the fine source code before you run it! For example this script
+# makes HTTP-requests with curl but no guarantees of possible security
+# implications are made.
 
 if [ $# -lt 1 ]; then
     echo "ARG1: path to a .wasm file of camera required"
@@ -19,7 +29,6 @@ elif [ $# -lt 5 ]; then
 fi
 
 # Define variables for the file paths.
-
 campath=$(readlink -f $1)
 camdescpath=$(readlink -f $2)
 infpath=$(readlink -f $3)
@@ -34,89 +43,38 @@ infmodelpathcontainer=/app/modules/inf.model
 
 set -e
 
-# Start needed containers.
-docker-compose up --detach --build
-docker-compose -f docker-compose.example-devices.yml \
-    up --detach --build \
-    adequate-webcam-laptop
+examplecomposepath=example/docker-compose.icwe23-demo.yml
+
+# Start containers to have interaction in the system.
+COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker-compose -f $examplecomposepath up --build --detach
 
 # Use the client container.
 clientcontainername="wasmiot-orcli"
 docker build -t $clientcontainername -f client.Dockerfile .
 
-# Inside this script, instead of using alias, define the partial docker command
-# as a variable for brevity.
-dorcli="docker run \
-    --rm
-    --env ORCHESTRATOR_ADDRESS=http://wasmiot-orchestrator:3000 \
-    --network=wasmiot-net \
+servercontainername="icwe23-demo-orchestrator"
+dockernetworkname="icwe23-demo-wasmiot-net"
+
+cleanup() {
+    echo "Example has finished. Composing down..."
+    docker-compose -f $examplecomposepath down
+    echo "Done."
+    exit 0
+}
+
+docker run \
+    --rm \
+    --env ORCHESTRATOR_ADDRESS=http://${servercontainername}:3000 \
+    --network=$dockernetworkname \
     --volume=$campath:$campathcontainer:ro \
     --volume=$camdescpath:$camdescpathcontainer:ro \
     --volume=$infpath:$infpathcontainer:ro \
     --volume=$infdescpath:$infdescpathcontainer:ro \
     --volume=$infmodelpath:$infmodelpathcontainer:ro \
-    $clientcontainername"
+    --volume=./example/icwe23-run.sh:/app/run.sh \
+    $clientcontainername \
+    "chmod u+x /app/run.sh && /app/run.sh $campathcontainer $camdescpathcontainer $infpathcontainer $infdescpathcontainer $infmodelpathcontainer" \
+    && cleanup
 
-# Remove possibly conflicting resources that are there already.
-echo "---"
-echo "Removing existing conflicting resources..."
-$dorcli device rm
-$dorcli device scan
-$dorcli module rm cam
-$dorcli module rm inf
-$dorcli deployment rm icwe23-demo
-echo "Removal done"
-echo "---"
-
-# Create needed camera and inference modules and describe their interfaces.
-$dorcli module create cam $campathcontainer
-$dorcli module desc cam $camdescpathcontainer
-# --||--
-$dorcli module create inf $infpathcontainer
-$dorcli module desc inf $infdescpathcontainer \
-    -m model -p $infmodelpathcontainer
-
-# Create a deployment taking a picture and directing it to inference.
-$dorcli deployment create icwe23-demo \
-    -d -m cam -f take_image_predefined_path \
-    -d -m inf -f infer_predefined_paths
-
-# Install the deployment.
-$dorcli deployment deploy icwe23-demo
-
-# Define cleanup if execution succeeds at first try.
-cleanup() {
-    echo "Example has finished. Composing down..."
-    docker-compose down
-    docker-compose -f docker-compose.example-devices.yml down
-    echo "Done."
-}
-
-# Execute. This might definitely fail at first, if the modules needs to be
-# compiled at supervisor.
-set +e
-$dorcli execute icwe23-demo && cleanup
-
-echo
-echo "!!!"
-echo "Assuming that the execution failed because WebAssembly has not yet finished compiling."
-
-if [ ! -z $6 ]; then
-    waittime=$6
-else
-    waittime=35
-fi
-
-
-# Wait for a while so that the module gets compiled...
-for i in $(seq 0 $waittime);
-do
-    printf "\rWaiting for supervisor to compile wasm... (%2ds)" $(( $waittime - $i ))
-    sleep 1
-done
-
-echo
-echo "Trying to execute again..."
-$dorcli execute icwe23-demo || printf "\n!!!\nFailed again. You could try increasing the wait time by passing it as ARG6.\n\n"
-
-cleanup
+printf "\n!!!\nDemonstration failed!\n* You could try increasing the wait time by passing it as ARG6.\n* NOTE that the containers are left unremoved for you to inspect their logs!\n\n"
+exit 1
